@@ -11,9 +11,9 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use jwt::{SignWithKey, VerifyWithKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use std::{collections::BTreeMap, fmt, str::FromStr, sync::Arc};
+use std::{fmt, str::FromStr, sync::Arc, time::{Duration, SystemTime}};
 use crate::AppState;
-use tracing::{info, error, debug};
+use tracing::{info, debug};
 use async_trait::async_trait;
 
 use anyhow::Result;
@@ -24,7 +24,7 @@ use anyhow::Result;
 #[derive(Deserialize)]
 pub struct AuthRequest {
     pub code: String,
-    pub state: Option<String>,
+    pub state: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -56,7 +56,7 @@ pub struct UnifiedUserInfo {
 struct TokenInformation {
     pub access_token: String,
     pub provider_name: String,
-    pub expire_date: u64,
+    pub expire_date: SystemTime,
     pub user_info: UnifiedUserInfo
 }
 
@@ -161,7 +161,7 @@ pub trait OAuthProvider: Send + Sync {
     fn get_authorize_url(&self, redirect_uri: &str, state: &str) -> String;
     
     /// 使用授权码交换访问令牌
-    async fn exchange_token(&self, code: &str, redirect_uri: &str) -> Result<(String, u64)>;
+    async fn exchange_token(&self, code: &str, redirect_uri: &str) -> Result<(String, Duration)>;
     
     /// 获取用户信息
     async fn get_user_info(&self, access_token: &str) -> Result<UnifiedUserInfo>;
@@ -238,7 +238,9 @@ pub async fn login(
     // 根据提供者类型创建相应的 provider
     let provider = create_oauth_provider(provider_config, &provider_name);
     
-    let auth_url = provider.get_authorize_url(&redirect_uri, &Uuid::new_v4().to_string());
+    let state_token = Uuid::new_v4().sign_with_key(state.secret())
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Server failed to sign JWT".to_string()))?;
+    let auth_url = provider.get_authorize_url(&redirect_uri, &state_token);
     
     Ok(Redirect::to(&auth_url))
 }
@@ -250,11 +252,14 @@ pub async fn callback(
     Query(params): Query<AuthRequest>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    info!("收到 {} OAuth2 回调请求", provider_name);
-    debug!("authorization code: {}", params.code);
+    debug!("Received {} OAuth2 callback", provider_name);
+    debug!("Authorization code: {}", params.code);
+    debug!("Authorization state: {}", params.state);
 
-    let config = &state.config;
-    
+    let action_uuid: Uuid = params.state.verify_with_key(state.secret())
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "State verification failed".to_string()))?;
+    debug!("Authorization UUID: {}", action_uuid.to_string());
+
     // 获取提供者配置
     let provider_config = state
         .get_provider(&provider_name)
@@ -266,8 +271,10 @@ pub async fn callback(
     let provider = create_oauth_provider(provider_config, &provider_name);
     
     // 1. 使用授权码交换访问令牌
-    let (access_token, expire_timestamp) = provider.exchange_token(&params.code, &redirect_uri).await
+    let (access_token, expire_duration) = provider.exchange_token(&params.code, &redirect_uri).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    debug!("Get a access token expiring in {}s", expire_duration.as_secs());
     
     // 2. 获取用户信息
     let user_info = provider.get_user_info(&access_token).await
@@ -276,20 +283,20 @@ pub async fn callback(
     debug!("用户信息获取成功: uid={}, nickname={}", user_info.uid, user_info.nickname);
     
     // 3. 创建 token 并设置 cookie
-    let token_map = TokenInformation {
+    let token = TokenInformation {
         access_token,
         provider_name,
         user_info,
-        expire_date: expire_timestamp
-    };
-    
-    let token = token_map.sign_with_key(&config.secret())
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Token sign failed: {}", e)))?;
+        expire_date: SystemTime::now() + expire_duration
+    }
+    .sign_with_key(state.secret())
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Token sign failed: {}", e)))?;
     
     let mut token_cookie = Cookie::new("access_token", token);
     token_cookie.set_path("/");
     token_cookie.set_http_only(true);
     token_cookie.set_same_site(SameSite::Strict);
+    token_cookie.set_expires(time::OffsetDateTime::now_utc() + expire_duration);
     
     let jar = jar.add(token_cookie);
     
@@ -329,7 +336,6 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, (StatusCode, CookieJar, String)> {
-    let config = &state.config;
     // 从 cookie 中获取 token
     let token_cookie = match jar.get("access_token") {
         Some(x) => x,
@@ -337,17 +343,22 @@ pub async fn auth_middleware(
     };
 
     // 验证并解析 token
-    let token_claims: TokenInformation = match token_cookie.value().verify_with_key(&config.secret()) {
+    let token_claims: TokenInformation = match token_cookie.value().verify_with_key(state.secret()) {
         Ok(x) => x,
         Err(_) => {
             return Err((StatusCode::UNAUTHORIZED, jar.remove(Cookie::from("access_token")), "Invalid token".to_string()));
         }
     };
 
+    // 检查 token 是否过期
+    if SystemTime::now() > token_claims.expire_date {
+        return Err((StatusCode::UNAUTHORIZED, jar.remove(Cookie::from("access_token")), "Login token expired".to_string()));
+    }
+
     // 从 OAuth 服务器获取用户信息
     let user_info = token_claims.user_info;
 
-    debug!("中间件验证用户成功: uid={}, nickname={}", user_info.uid, user_info.nickname);
+    debug!("User authorized: {user_info:?}");
 
     // 将用户信息存储到请求的 extensions 中
     request.extensions_mut().insert(user_info);

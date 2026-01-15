@@ -1,4 +1,7 @@
 use axum::{routing::get, Router};
+use hmac::Hmac;
+use hmac::digest::KeyInit;
+use sha2::Sha256;
 use tower_http::trace::{self, TraceLayer};
 use std::{net::SocketAddr, path::Path};
 use std::sync::Arc;
@@ -15,7 +18,9 @@ mod config;
 const CONFIG_FILE: &str = "config.yml";
 
 pub struct AppState {
-    pub config: Config
+    pub config: Config,
+    
+    secret_key: Hmac<Sha256>
 }
 
 impl AppState {
@@ -48,7 +53,10 @@ impl AppState {
             }
         };
 
-        AppState { config: app_config }
+        let secret_key = Hmac::<Sha256>::new_from_slice(app_config.oauth.secret_string.as_bytes())
+            .expect("HMAC can take key of any size");
+
+        AppState { config: app_config, secret_key }
     }
 
 
@@ -69,6 +77,10 @@ impl AppState {
     /// 获取特定提供者配置
     pub fn get_provider(&self, name: &str) -> Option<&OAuthProviderConfig> {
         self.config.oauth.providers.get(name)
+    }
+
+    pub fn secret(&self) -> &Hmac<Sha256> {
+        &self.secret_key
     }
 }
 

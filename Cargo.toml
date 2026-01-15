@@ -25,6 +25,7 @@ tracing-subscriber = { version = "0.3.22", features = ["fmt"] }
 hmac = "0.12.1"
 sha2 = { version = "0.10.9" }
 async-trait = "0.1"
+time = "0.3.45"
 
 [build-dependencies]
 rust-embed = "8.10.0"

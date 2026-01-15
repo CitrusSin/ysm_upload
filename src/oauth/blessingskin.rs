@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use super::{OAuthProvider, OAuthProviderType, UnifiedUserInfo};
 use crate::config::OAuthProviderConfig;
@@ -53,7 +53,7 @@ impl OAuthProvider for BlessingSkinProvider {
         )
     }
 
-    async fn exchange_token(&self, code: &str, redirect_uri: &str) -> Result<(String, u64)> {
+    async fn exchange_token(&self, code: &str, redirect_uri: &str) -> Result<(String, Duration)> {
         let client = reqwest::Client::new();
         
         // 从 provider_type 中提取 base URL
@@ -72,7 +72,7 @@ impl OAuthProvider for BlessingSkinProvider {
             .json().await?;
 
         debug!("Token 获取成功");
-        Ok((token_data.access_token, SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + token_data.expires_in))
+        Ok((token_data.access_token, Duration::from_secs(token_data.expires_in)))
     }
 
     async fn get_user_info(&self, access_token: &str) -> Result<UnifiedUserInfo> {

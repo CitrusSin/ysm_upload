@@ -1,8 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use std::fs;
 use std::collections::HashMap;
 
@@ -95,8 +93,4 @@ impl Config {
         Ok(())
     }
 
-    pub fn secret(&self) -> Hmac<Sha256> {
-        Hmac::<Sha256>::new_from_slice(self.oauth.secret_string.as_bytes())
-            .expect("HMAC can take key of any size")
-    }
 }
