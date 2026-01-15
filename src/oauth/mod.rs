@@ -37,6 +37,7 @@ pub struct YggdrasilKVPair {
 pub struct YggdrasilProfile {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub properties: Vec<YggdrasilKVPair>,
 }
 

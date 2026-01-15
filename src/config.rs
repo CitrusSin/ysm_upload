@@ -39,6 +39,8 @@ pub struct OAuthProviderConfig {
     pub client_id: String,
     /// 客户端密钥
     pub client_secret: String,
+    /// 申请权限
+    pub scopes: Vec<String>,
     /// 是否启用
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -65,6 +67,7 @@ impl Config {
             provider_type: OAuthProviderType::BlessingSkin("https://littleskin.cn".to_string()),
             client_id: "your_client_id_here".to_string(),
             client_secret: "your_client_secret_here".to_string(),
+            scopes: vec!["User.Read".to_string(), "Players.Read".to_string()],
             enabled: true,
         });
 
@@ -73,6 +76,7 @@ impl Config {
             provider_type: OAuthProviderType::Microsoft,
             client_id: "your_azure_client_id".to_string(),
             client_secret: "your_azure_client_secret".to_string(),
+            scopes: vec!["User.Read".to_string()],
             enabled: false, // 默认禁用
         });
 

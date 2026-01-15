@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::{OAuthProvider, OAuthProviderType, UnifiedUserInfo};
-use crate::config::OAuthProviderConfig;
+use crate::{config::OAuthProviderConfig, oauth::YggdrasilProfile};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -24,6 +24,16 @@ pub struct BlessingSkinUserInfo {
     pub email: String,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct BlessingSkinProfile {
+    pub pid: i32,
+    pub uid: i32,
+    pub name: String,
+    pub tid_skin: i32,
+    pub tid_cape: i32,
+    pub last_modified: String,
+}
+
 pub struct BlessingSkinProvider {
     config: OAuthProviderConfig,
     name: String,
@@ -38,7 +48,7 @@ impl BlessingSkinProvider {
 #[async_trait]
 impl OAuthProvider for BlessingSkinProvider {
     fn get_authorize_url(&self, redirect_uri: &str, state: &str) -> String {
-        let scopes = vec!["User.Read", "Yggdrasil.PlayerProfiles.Read"];
+        let scopes = &self.config.scopes;
         
         // 从 provider_type 中提取 base URL
         let base_url = self.config.provider_type.base_url().trim_end_matches('/');
@@ -80,7 +90,7 @@ impl OAuthProvider for BlessingSkinProvider {
         
         // 从 provider_type 中提取 base URL
         let base_url = match &self.config.provider_type {
-            OAuthProviderType::BlessingSkin(url) => url.clone(),
+            OAuthProviderType::BlessingSkin(url) => url.as_str(),
             _ => panic!("Invalid provider type for BlessingSkinProvider"),
         };
         
@@ -93,9 +103,19 @@ impl OAuthProvider for BlessingSkinProvider {
         debug!("BlessingSkin 用户信息获取成功: uid={}, nickname={}", user_info.uid, user_info.nickname);
 
         // 获取profiles
-        let profiles = client
-            .get(format!("{}/api/yggdrasil/sessionserver/session/minecraft/profile", base_url))
+        let profs: Vec<BlessingSkinProfile> = client
+            .get(format!("{}/api/players", base_url))
             .bearer_auth(access_token)
+            .send().await?
+            .json().await?;
+
+        let names = profs.into_iter().map(|p| p.name).collect::<Vec<String>>();
+
+        debug!("Player names: {:?}", names);
+
+        let profiles: Vec<YggdrasilProfile> = client
+            .post(format!("{}/api/yggdrasil/api/profiles/minecraft", base_url))
+            .json(&names)
             .send().await?
             .json().await?;
 
