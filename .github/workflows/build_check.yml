@@ -21,6 +21,8 @@ jobs:
     - uses: pnpm/action-setup@v6.0.5
       with:
         version: 10.28.0
+    - name: Install frontend dependencies
+      run: bash -c 'cd frontend && pnpm install --frozen-lockfile'
     - name: Build
       run: cargo build --verbose
     - name: Run tests
