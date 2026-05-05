@@ -1,4 +1,5 @@
 pub mod blessingskin;
+pub mod microsoft;
 
 use axum::{
     extract::{Path, Query, State, FromRequestParts, Request},
@@ -35,7 +36,7 @@ pub struct YggdrasilKVPair {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct YggdrasilProfile {
-    pub id: String,
+    pub id: Uuid,
     pub name: String,
     #[serde(default)]
     pub properties: Vec<YggdrasilKVPair>,
@@ -44,9 +45,7 @@ pub struct YggdrasilProfile {
 /// 统一的用户信息结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnifiedUserInfo {
-    pub uid: String,           // 统一使用字符串 ID
     pub nickname: String,
-    pub email: String,
     pub provider: String,       // 提供者名称
     pub provider_type: OAuthProviderType,  // 提供者类型
     #[serde(default)]
@@ -189,7 +188,9 @@ pub fn create_oauth_provider(
         OAuthProviderType::BlessingSkin(_) => Box::new(
             blessingskin::BlessingSkinProvider::new(provider_config.clone(), provider_name.to_string())
         ),
-        OAuthProviderType::Microsoft => todo!()
+        OAuthProviderType::Microsoft => Box::new(
+            microsoft::MicrosoftProvider::new(provider_config.clone(), provider_name.to_string())
+        )
     }
 }
 
@@ -281,7 +282,7 @@ pub async fn callback(
     let user_info = provider.get_user_info(&access_token).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     
-    debug!("用户信息获取成功: uid={}, nickname={}", user_info.uid, user_info.nickname);
+    debug!("用户信息获取成功: nickname={}", user_info.nickname);
     
     // 3. 创建 token 并设置 cookie
     let token = TokenInformation {
@@ -311,7 +312,6 @@ pub async fn callback(
 /// 
 /// 此函数依赖于 auth_middleware 将用户信息注入到请求的 extensions 中
 pub async fn get_user(user: UnifiedUserInfo) -> Json<UnifiedUserInfo> {
-    debug!("返回用户信息: uid={}, nickname={}", user.uid, user.nickname);
     Json(user)
 }
 

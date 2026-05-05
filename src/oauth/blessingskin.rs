@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use super::{OAuthProvider, OAuthProviderType, UnifiedUserInfo};
 use crate::{config::OAuthProviderConfig, oauth::YggdrasilProfile};
@@ -6,16 +6,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 
-
-#[derive(Deserialize, Debug)]
-struct TokenResponse {
-    access_token: String,
-    token_type: String,
-    #[serde(default)]
-    expires_in: u64,
-}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BlessingSkinUserInfo {
@@ -59,7 +51,7 @@ impl OAuthProvider for BlessingSkinProvider {
             urlencoding::encode(&self.config.client_id),
             urlencoding::encode(redirect_uri),
             state,
-            scopes.join(" ")
+            urlencoding::encode(&scopes.join(" "))
         )
     }
 
@@ -69,7 +61,7 @@ impl OAuthProvider for BlessingSkinProvider {
         // 从 provider_type 中提取 base URL
         let base_url = self.config.provider_type.base_url().trim_end_matches('/');
         
-        let token_data: TokenResponse = client
+        let token_data: HashMap<String, serde_json::Value> = client
             .post(format!("{}/oauth/token", base_url))
             .form(&[
                 ("grant_type", "authorization_code"),
@@ -81,8 +73,17 @@ impl OAuthProvider for BlessingSkinProvider {
             .send().await?.error_for_status()?
             .json().await?;
 
-        debug!("Token 获取成功");
-        Ok((token_data.access_token, Duration::from_secs(token_data.expires_in)))
+        let access_token = token_data.get("access_token")
+            .ok_or_else(|| Error::msg("access_token field does not exist"))?
+            .as_str()
+            .ok_or_else(|| Error::msg("access_token is not a string"))?
+            .to_string();
+        let expires_in = token_data.get("expires_in")
+            .ok_or_else(|| Error::msg("expires_in field does not exist"))?
+            .as_u64()
+            .ok_or_else(|| Error::msg("expires_in field is not a positive integer"))?;
+
+        Ok((access_token, Duration::from_secs(expires_in)))
     }
 
     async fn get_user_info(&self, access_token: &str) -> Result<UnifiedUserInfo> {
@@ -123,9 +124,7 @@ impl OAuthProvider for BlessingSkinProvider {
 
         // 转换为统一格式
         Ok(UnifiedUserInfo {
-            uid: user_info.uid.to_string(),
             nickname: user_info.nickname,
-            email: user_info.email,
             provider: self.name.clone(),
             provider_type: self.provider_type(),
             profiles,

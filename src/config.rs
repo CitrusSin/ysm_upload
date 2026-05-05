@@ -11,6 +11,7 @@ use crate::oauth::OAuthProviderType;
 pub struct Config {
     pub server: ServerConfig,
     pub oauth: OAuthProvidersConfig,
+    pub rcon: RconConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +47,14 @@ pub struct OAuthProviderConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RconConfig {
+    pub host: String,
+    pub port: u16,
+    pub password: String,
+}
+
+
 fn default_true() -> bool {
     true
 }
@@ -75,8 +84,8 @@ impl Config {
         providers.insert("microsoft".to_string(), OAuthProviderConfig {
             provider_type: OAuthProviderType::Microsoft,
             client_id: "your_azure_client_id".to_string(),
-            client_secret: "your_azure_client_secret".to_string(),
-            scopes: vec!["User.Read".to_string()],
+            client_secret: "your_client_secret_here".to_string(),
+            scopes: vec!["XboxLive.signin".to_string()],
             enabled: false, // 默认禁用
         });
 
@@ -89,6 +98,11 @@ impl Config {
                 prefix_url: "http://127.0.0.1:3000".to_string(),
                 secret_string: "your-secret-here-change-this-in-production".to_string(),
                 providers,
+            },
+            rcon: RconConfig {
+                host: "127.0.0.1".to_string(),
+                port: 25575,
+                password: "your_rcon_password_here".to_string(),
             },
         };
 

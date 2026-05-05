@@ -13,6 +13,7 @@ use crate::config::{Config, OAuthProviderConfig};
 
 mod static_content;
 mod oauth;
+mod rcon;
 mod config;
 
 const CONFIG_FILE: &str = "config.yml";
