@@ -1,4 +1,4 @@
-use axum::{routing::get, Router};
+use axum::{extract::DefaultBodyLimit, routing::{get, post}, Router};
 use hmac::Hmac;
 use hmac::digest::KeyInit;
 use sha2::Sha256;
@@ -11,12 +11,16 @@ use anyhow::Result;
 
 use crate::config::{Config, OAuthProviderConfig};
 
+mod app_error;
 mod static_content;
+mod external_api;
 mod oauth;
 mod rcon;
 mod config;
+mod ysm;
 
 const CONFIG_FILE: &str = "config.yml";
+const YSM_UPLOAD_MAX_BODY_SIZE: usize = 64 * 1024 * 1024;
 
 pub struct AppState {
     pub config: Config,
@@ -93,12 +97,17 @@ async fn main() -> Result<()> {
         .with_target(false)
         .with_level(true)
         .init();
+
     
     let app_state = Arc::new(AppState::new());
 
     // Routes that require authentication
     let protected_routes = Router::new()
         .route("/api/user", get(oauth::get_user))
+        .route(
+            "/api/ysm/upload",
+            post(ysm::upload_authorized_model).layer(DefaultBodyLimit::max(YSM_UPLOAD_MAX_BODY_SIZE)),
+        )
         .layer(axum::middleware::from_fn_with_state(
             app_state.clone(),
             oauth::auth_middleware

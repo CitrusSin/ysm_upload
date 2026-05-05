@@ -18,12 +18,12 @@ pub struct BlessingSkinUserInfo {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct BlessingSkinProfile {
-    pub pid: i32,
-    pub uid: i32,
+    #[allow(unused)] pub pid: i32,
+    #[allow(unused)] pub uid: i32,
     pub name: String,
-    pub tid_skin: i32,
-    pub tid_cape: i32,
-    pub last_modified: String,
+    #[allow(unused)] pub tid_skin: i32,
+    #[allow(unused)] pub tid_cape: i32,
+    #[allow(unused)] pub last_modified: String,
 }
 
 pub struct BlessingSkinProvider {
@@ -127,6 +127,7 @@ impl OAuthProvider for BlessingSkinProvider {
             nickname: user_info.nickname,
             provider: self.name.clone(),
             provider_type: self.provider_type(),
+            premium_verification: None,
             profiles,
         })
     }

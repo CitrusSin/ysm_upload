@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use anyhow::{Error, Result};
 
 use tracing::debug;
-use tracing_subscriber::fmt::format;
 use uuid::Uuid;
 
 use crate::{config::OAuthProviderConfig, oauth::{OAuthProvider, OAuthProviderType, UnifiedUserInfo, YggdrasilProfile}};
@@ -165,6 +164,7 @@ impl OAuthProvider for MicrosoftProvider {
             nickname: player_name.to_string(),
             provider: self.name.clone(),
             provider_type: self.provider_type(),
+            premium_verification: None,
             profiles: vec![YggdrasilProfile {
                 id: uuid,
                 name: player_name.to_string(),

@@ -1,5 +1,8 @@
 pub mod blessingskin;
+pub mod littleskin;
 pub mod microsoft;
+
+use crate::{app_error::AppResult, external_api::YggdrasilProfile};
 
 use axum::{
     extract::{Path, Query, State, FromRequestParts, Request},
@@ -28,19 +31,6 @@ pub struct AuthRequest {
     pub state: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct YggdrasilKVPair {
-    pub name: String,
-    pub value: String,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct YggdrasilProfile {
-    pub id: Uuid,
-    pub name: String,
-    #[serde(default)]
-    pub properties: Vec<YggdrasilKVPair>,
-}
 
 /// Unified user information structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,8 +38,17 @@ pub struct UnifiedUserInfo {
     pub nickname: String,
     pub provider: String,       // Provider name
     pub provider_type: OAuthProviderType,  // Provider type
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub premium_verification: Option<PremiumVerificationStatus>,
     #[serde(default)]
     pub profiles: Vec<YggdrasilProfile>,  // Player profile list
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PremiumVerificationStatus {
+    pub verified: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +84,8 @@ where
 pub enum OAuthProviderType {
     /// Blessing Skin site
     BlessingSkin(String),
+    /// LittleSkin
+    LittleSkin,
     /// Microsoft account
     Microsoft,
 }
@@ -95,6 +96,7 @@ impl OAuthProviderType {
     pub fn display_name(&self) -> String {
         match self {
             Self::BlessingSkin(prefix) => format!("Blessing Skin ({prefix})"),
+            Self::LittleSkin => "LittleSkin".to_string(),
             Self::Microsoft => "Microsoft".to_string(),
         }
     }
@@ -102,6 +104,7 @@ impl OAuthProviderType {
     pub fn base_url(&self) -> &str {
         match self {
             Self::BlessingSkin(url) => url,
+            Self::LittleSkin => "https://littleskin.cn",
             Self::Microsoft => "https://login.microsoftonline.com",
         }
     }
@@ -111,6 +114,7 @@ impl fmt::Display for OAuthProviderType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BlessingSkin(prefix) => write!(f, "blessingskin={}", prefix),
+            Self::LittleSkin => write!(f, "littleskin"),
             Self::Microsoft => write!(f, "microsoft"),
         }
     }
@@ -127,6 +131,7 @@ impl FromStr for OAuthProviderType {
             return Ok(Self::BlessingSkin(prefix.to_string()))
         }
         match s.to_lowercase().as_str() {
+            "littleskin" | "ls" => Ok(Self::LittleSkin),
             "microsoft" | "ms" => Ok(Self::Microsoft),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -185,6 +190,12 @@ pub fn create_oauth_provider(
     provider_name: &str,
 ) -> Box<dyn OAuthProvider> {
     match provider_config.provider_type {
+        OAuthProviderType::LittleSkin => Box::new(
+            littleskin::LittleSkinProvider::new(provider_config.clone(), provider_name.to_string())
+        ),
+        OAuthProviderType::BlessingSkin(ref url) if is_littleskin_url(url) => Box::new(
+            littleskin::LittleSkinProvider::new(provider_config.clone(), provider_name.to_string())
+        ),
         OAuthProviderType::BlessingSkin(_) => Box::new(
             blessingskin::BlessingSkinProvider::new(provider_config.clone(), provider_name.to_string())
         ),
@@ -192,6 +203,11 @@ pub fn create_oauth_provider(
             microsoft::MicrosoftProvider::new(provider_config.clone(), provider_name.to_string())
         )
     }
+}
+
+fn is_littleskin_url(url: &str) -> bool {
+    let normalized = url.trim_end_matches('/').to_ascii_lowercase();
+    normalized == "https://littleskin.cn" || normalized == "http://littleskin.cn"
 }
 
 // ============= Route Handlers =============
@@ -204,7 +220,7 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
         .map(|(name, provider_config)| {
             serde_json::json!({
                 "name": name,
-                "type": provider_config.provider_type,
+                "provider_type": provider_config.provider_type,
                 "display_name": provider_config.provider_type.display_name(),
                 "login_url": format!("/api/oauth/{}/login", name)
             })
@@ -221,16 +237,19 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Path(provider_name): Path<String>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> AppResult<Response> {
     info!("Starting {} OAuth2 login flow", provider_name);
 
     // Get the provider configuration
-    let provider_config = state
-        .get_provider(&provider_name)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Provider {} not found", provider_name)))?;
+    let provider_config = match state.get_provider(&provider_name) {
+        Some(config) => config,
+        None => {
+            return Ok((StatusCode::NOT_FOUND, format!("Provider {} not found", provider_name)).into_response());
+        }
+    };
     
     if !provider_config.enabled {
-        return Err((StatusCode::FORBIDDEN, format!("Provider {} is disabled", provider_name)));
+        return Ok((StatusCode::FORBIDDEN, format!("Provider {} is disabled", provider_name)).into_response());
     }
     
     let redirect_uri = state.get_redirect_uri(&provider_name);
@@ -240,11 +259,10 @@ pub async fn login(
     // Create the matching provider implementation
     let provider = create_oauth_provider(provider_config, &provider_name);
     
-    let state_token = Uuid::new_v4().sign_with_key(state.secret())
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Server failed to sign JWT".to_string()))?;
+    let state_token = Uuid::new_v4().sign_with_key(state.secret())?;
     let auth_url = provider.get_authorize_url(&redirect_uri, &state_token);
     
-    Ok(Redirect::to(&auth_url))
+    Ok(Redirect::to(&auth_url).into_response())
 }
 
 /// Handle the OAuth2 callback for a dynamic route
@@ -253,19 +271,26 @@ pub async fn callback(
     Path(provider_name): Path<String>,
     Query(params): Query<AuthRequest>,
     jar: CookieJar,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> AppResult<Response> {
     debug!("Received {} OAuth2 callback", provider_name);
     debug!("Authorization code: {}", params.code);
     debug!("Authorization state: {}", params.state);
 
-    let action_uuid: Uuid = params.state.verify_with_key(state.secret())
-        .map_err(|_| (StatusCode::UNAUTHORIZED, "State verification failed".to_string()))?;
+    let action_uuid: Uuid = match params.state.verify_with_key(state.secret()) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Ok((StatusCode::UNAUTHORIZED, jar, "State verification failed".to_string()).into_response());
+        }
+    };
     debug!("Authorization UUID: {}", action_uuid.to_string());
 
     // Get the provider configuration
-    let provider_config = state
-        .get_provider(&provider_name)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Provider {} not found", provider_name)))?;
+    let provider_config = match state.get_provider(&provider_name) {
+        Some(config) => config,
+        None => {
+            return Ok((StatusCode::NOT_FOUND, jar, format!("Provider {} not found", provider_name)).into_response());
+        }
+    };
     
     let redirect_uri = state.get_redirect_uri(&provider_name);
     
@@ -273,14 +298,12 @@ pub async fn callback(
     let provider = create_oauth_provider(provider_config, &provider_name);
     
     // 1. Exchange the authorization code for an access token
-    let (access_token, expire_duration) = provider.exchange_token(&params.code, &redirect_uri).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (access_token, expire_duration) = provider.exchange_token(&params.code, &redirect_uri).await?;
 
     debug!("Get a access token expiring in {}s", expire_duration.as_secs());
     
     // 2. Fetch user information
-    let user_info = provider.get_user_info(&access_token).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let user_info = provider.get_user_info(&access_token).await?;
     
     debug!("User info fetched successfully: nickname={}", user_info.nickname);
     
@@ -291,8 +314,7 @@ pub async fn callback(
         user_info,
         expire_date: SystemTime::now() + expire_duration
     }
-    .sign_with_key(state.secret())
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Token sign failed: {}", e)))?;
+    .sign_with_key(state.secret())?;
     
     let mut token_cookie = Cookie::new("access_token", token);
     token_cookie.set_path("/");
@@ -303,7 +325,7 @@ pub async fn callback(
     let jar = jar.add(token_cookie);
     
     // Redirect to the home page
-    Ok((jar, Redirect::to("/")))
+    Ok((jar, Redirect::to("/")).into_response())
 }
 
 
