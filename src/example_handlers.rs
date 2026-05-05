@@ -1,5 +1,5 @@
-// 示例：如何在新模块中使用 OAuth middleware
-// 此文件展示了如何创建需要用户认证的 API
+// Example: how to use the OAuth middleware in a new module
+// This file shows how to create APIs that require user authentication
 
 use axum::{
     extract::{Multipart, Path, Query, State},
@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::oauth::AuthUser;
 
-// ============= 示例 1: 简单的用户资料 API =============
+// ============= Example 1: Simple User Profile API =============
 
-/// 获取当前用户的资料
+/// Get the current user's profile
 /// 
-/// 使用 AuthUser 参数自动获取认证用户信息
+/// Automatically retrieve authenticated user info with the AuthUser parameter
 pub async fn get_profile(user: AuthUser) -> impl IntoResponse {
     Json(json!({
         "uid": user.uid,
@@ -25,11 +25,11 @@ pub async fn get_profile(user: AuthUser) -> impl IntoResponse {
     }))
 }
 
-// ============= 示例 2: 文件上传 API =============
+// ============= Example 2: File Upload API =============
 
-/// 处理文件上传
+/// Handle file uploads
 /// 
-/// 自动获取用户信息，并将文件与用户关联
+/// Automatically retrieve user info and associate uploaded files with the user
 pub async fn upload_file(
     user: AuthUser,
     mut multipart: Multipart,
@@ -41,11 +41,11 @@ pub async fn upload_file(
         let filename = field.file_name().unwrap_or("unnamed").to_string();
         let data = field.bytes().await.unwrap();
         
-        // 这里添加你的文件保存逻辑
+        // Add your file persistence logic here
         // save_file_to_storage(user.uid, &filename, &data).await?;
         
         tracing::info!(
-            "用户 {} (UID: {}) 上传了文件: {} ({} bytes)",
+            "User {} (UID: {}) uploaded file: {} ({} bytes)",
             user.nickname,
             user.uid,
             filename,
@@ -65,7 +65,7 @@ pub async fn upload_file(
     })))
 }
 
-// ============= 示例 3: 带查询参数的 API =============
+// ============= Example 3: API With Query Parameters =============
 
 #[derive(Deserialize)]
 pub struct FileListQuery {
@@ -73,9 +73,9 @@ pub struct FileListQuery {
     limit: Option<u32>,
 }
 
-/// 列出用户的文件
+/// List a user's files
 /// 
-/// 结合 Query 和 AuthUser 参数
+/// Combine Query and AuthUser parameters
 pub async fn list_user_files(
     user: AuthUser,
     Query(query): Query<FileListQuery>,
@@ -83,7 +83,7 @@ pub async fn list_user_files(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(10);
     
-    // 这里添加你的数据库查询逻辑
+    // Add your database query logic here
     // let files = db.get_user_files(user.uid, page, limit).await;
     
     Json(json!({
@@ -95,24 +95,24 @@ pub async fn list_user_files(
             "page": page,
             "limit": limit
         },
-        "files": [] // 从数据库查询的文件列表
+        "files": [] // File list queried from the database
     }))
 }
 
-// ============= 示例 4: 带路径参数的 API =============
+// ============= Example 4: API With Path Parameters =============
 
-/// 获取特定文件
+/// Get a specific file
 /// 
-/// 包含权限检查：只有文件所有者才能访问
+/// Includes an authorization check: only the file owner can access it
 pub async fn get_file(
     user: AuthUser,
     Path(file_id): Path<u64>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // 这里添加你的数据库查询逻辑
+    // Add your database query logic here
     // let file = db.get_file(file_id).await
     //     .ok_or_else(|| (StatusCode::NOT_FOUND, "File not found".to_string()))?;
     
-    // 权限检查示例
+    // Example authorization check
     // if file.owner_uid != user.uid {
     //     return Err((StatusCode::FORBIDDEN, "Access denied".to_string()));
     // }
@@ -127,30 +127,30 @@ pub async fn get_file(
     })))
 }
 
-// ============= 示例 5: 带 State 的 API =============
+// ============= Example 5: API With State =============
 
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db_pool: String, // 实际应该是数据库连接池
+    pub db_pool: String, // This should be a real database connection pool
 }
 
-/// 更新用户设置
+/// Update user settings
 /// 
-/// 结合 State 和 AuthUser
+/// Combine State and AuthUser
 pub async fn update_settings(
     user: AuthUser,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(
-        "用户 {} (UID: {}) 正在更新设置",
+        "User {} (UID: {}) is updating settings",
         user.nickname,
         user.uid
     );
     
-    // 这里添加你的数据库更新逻辑
+    // Add your database update logic here
     // db.update_user_settings(user.uid, &payload).await?;
     
     Ok(Json(json!({
@@ -160,13 +160,13 @@ pub async fn update_settings(
     })))
 }
 
-// ============= 示例 6: 可选认证 =============
+// ============= Example 6: Optional Authentication =============
 
-/// 获取公开内容
+/// Get public content
 /// 
-/// 支持可选认证：未登录用户也可以访问，但登录用户会看到个性化内容
+/// Support optional authentication: guests can access this too, but logged-in users see personalized content
 pub async fn get_public_content(
-    user: Option<AuthUser>, // 使用 Option 使认证变为可选
+    user: Option<AuthUser>, // Use Option to make authentication optional
 ) -> impl IntoResponse {
     match user {
         Some(user) => Json(json!({
@@ -182,10 +182,10 @@ pub async fn get_public_content(
     }
 }
 
-// ============= 如何在 main.rs 中使用这些 handler =============
+// ============= How To Use These Handlers In main.rs =============
 
 /*
-在 main.rs 中：
+In main.rs:
 
 use axum::{
     Router,
@@ -193,7 +193,7 @@ use axum::{
     middleware,
 };
 
-// 创建需要认证的路由组
+// Create a route group that requires authentication
 let protected_routes = Router::new()
     .route("/api/profile", get(example_handlers::get_profile))
     .route("/api/upload", post(example_handlers::upload_file))
@@ -205,11 +205,11 @@ let protected_routes = Router::new()
         oauth::auth_middleware
     ));
 
-// 创建不需要认证的路由（或可选认证）
+// Create routes that do not require authentication, or use optional authentication
 let public_routes = Router::new()
     .route("/api/content", get(example_handlers::get_public_content));
 
-// 合并所有路由
+// Merge all routes
 let app = Router::new()
     .route("/api/oauth/login", get(oauth::login))
     .route("/api/oauth/callback", get(oauth::callback))

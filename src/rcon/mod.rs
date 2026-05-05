@@ -92,7 +92,7 @@ impl RconPacket {
                 .try_into()
                 .map_err(|e| RconError::InvalidPacket(format!("Invalid packet type bytes: {}", e)))?,
         ) as i32;
-        let mut payload_buf = vec![0u8; payload_len + 2]; // 包含两个 null 字节
+        let mut payload_buf = vec![0u8; payload_len + 2]; // Includes two trailing null bytes
 
         stream.read_exact(&mut payload_buf).await.map_err(|e| RconError::IoError(e))?;
 
@@ -111,8 +111,8 @@ impl Into<Vec<u8>> for RconPacket {
         bytes.extend_from_slice(&self._id.to_le_bytes());
         bytes.extend_from_slice(&self._packet_type.to_le_bytes());
         bytes.extend_from_slice(&self._payload);
-        bytes.push(0); // payload 结尾的 null 字节
-        bytes.push(0); // 包结尾的 null 字节
+        bytes.push(0); // Null byte at the end of the payload
+        bytes.push(0); // Null byte at the end of the packet
         bytes
     }
 }

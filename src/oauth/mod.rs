@@ -19,9 +19,9 @@ use async_trait::async_trait;
 
 use anyhow::Result;
 
-// ============= 通用数据结构 =============
+// ============= Common Data Structures =============
 
-/// OAuth2 授权码查询参数
+/// OAuth2 authorization code query parameters
 #[derive(Deserialize)]
 pub struct AuthRequest {
     pub code: String,
@@ -42,14 +42,14 @@ pub struct YggdrasilProfile {
     pub properties: Vec<YggdrasilKVPair>,
 }
 
-/// 统一的用户信息结构
+/// Unified user information structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnifiedUserInfo {
     pub nickname: String,
-    pub provider: String,       // 提供者名称
-    pub provider_type: OAuthProviderType,  // 提供者类型
+    pub provider: String,       // Provider name
+    pub provider_type: OAuthProviderType,  // Provider type
     #[serde(default)]
-    pub profiles: Vec<YggdrasilProfile>,  // 玩家角色列表
+    pub profiles: Vec<YggdrasilProfile>,  // Player profile list
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +67,7 @@ where
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // 从 extensions 中提取用户信息（由 auth_middleware 插入）
+        // Extract user info from extensions, inserted by auth_middleware
         parts
             .extensions
             .get::<UnifiedUserInfo>()
@@ -78,20 +78,20 @@ where
     }
 }
 
-// ============= OAuth 提供者 Trait =============
+// ============= OAuth Provider Trait =============
 
-/// OAuth 提供者类型枚举
+/// OAuth provider type enum
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum OAuthProviderType {
-    /// Blessing Skin 皮肤站
+    /// Blessing Skin site
     BlessingSkin(String),
-    /// Microsoft 账号
+    /// Microsoft account
     Microsoft,
 }
 
 impl OAuthProviderType {
 
-    /// 获取提供者的显示名称
+    /// Get the provider display name
     pub fn display_name(&self) -> String {
         match self {
             Self::BlessingSkin(prefix) => format!("Blessing Skin ({prefix})"),
@@ -152,34 +152,34 @@ impl<'a> Deserialize<'a> for OAuthProviderType {
     }
 }
 
-/// OAuth 提供者接口
+/// OAuth provider interface
 /// 
-/// 每个 OAuth 提供者都需要实现这个 trait
+/// Every OAuth provider must implement this trait
 #[async_trait]
 pub trait OAuthProvider: Send + Sync {
-    /// 获取授权 URL
+    /// Get the authorization URL
     fn get_authorize_url(&self, redirect_uri: &str, state: &str) -> String;
     
-    /// 使用授权码交换访问令牌
+    /// Exchange an authorization code for an access token
     async fn exchange_token(&self, code: &str, redirect_uri: &str) -> Result<(String, Duration)>;
     
-    /// 获取用户信息
+    /// Fetch user information
     async fn get_user_info(&self, access_token: &str) -> Result<UnifiedUserInfo>;
     
-    /// 获取提供者类型
+    /// Get the provider type
     fn provider_type(&self) -> OAuthProviderType;
 }
 
-/// 根据配置创建 OAuth 提供者实例
+/// Create an OAuth provider instance from configuration
 /// 
-/// # 参数
+/// # Parameters
 /// 
-/// * `provider_config` - OAuth 提供者配置
-/// * `provider_name` - 提供者名称
+/// * `provider_config` - OAuth provider configuration
+/// * `provider_name` - Provider name
 /// 
-/// # 返回
+/// # Returns
 /// 
-/// 返回对应类型的 OAuthProvider trait 对象
+/// An OAuthProvider trait object of the matching type
 pub fn create_oauth_provider(
     provider_config: &crate::config::OAuthProviderConfig,
     provider_name: &str,
@@ -194,9 +194,9 @@ pub fn create_oauth_provider(
     }
 }
 
-// ============= 路由处理函数 =============
+// ============= Route Handlers =============
 
-/// 列出所有可用的 OAuth 提供者
+/// List all available OAuth providers
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let providers: Vec<_> = state
         .get_enabled_providers()
@@ -217,14 +217,14 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
 }
 
 
-/// 开始 OAuth2 登录流程（动态路由）
+/// Start the OAuth2 login flow for a dynamic route
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Path(provider_name): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    info!("启动 {} OAuth2 登录流程", provider_name);
+    info!("Starting {} OAuth2 login flow", provider_name);
 
-    // 获取提供者配置
+    // Get the provider configuration
     let provider_config = state
         .get_provider(&provider_name)
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Provider {} not found", provider_name)))?;
@@ -237,7 +237,7 @@ pub async fn login(
     
     debug!("redirect_uri: {}", redirect_uri);
     
-    // 根据提供者类型创建相应的 provider
+    // Create the matching provider implementation
     let provider = create_oauth_provider(provider_config, &provider_name);
     
     let state_token = Uuid::new_v4().sign_with_key(state.secret())
@@ -247,7 +247,7 @@ pub async fn login(
     Ok(Redirect::to(&auth_url))
 }
 
-/// OAuth2 回调处理（动态路由）
+/// Handle the OAuth2 callback for a dynamic route
 pub async fn callback(
     State(state): State<Arc<AppState>>,
     Path(provider_name): Path<String>,
@@ -262,29 +262,29 @@ pub async fn callback(
         .map_err(|_| (StatusCode::UNAUTHORIZED, "State verification failed".to_string()))?;
     debug!("Authorization UUID: {}", action_uuid.to_string());
 
-    // 获取提供者配置
+    // Get the provider configuration
     let provider_config = state
         .get_provider(&provider_name)
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Provider {} not found", provider_name)))?;
     
     let redirect_uri = state.get_redirect_uri(&provider_name);
     
-    // 根据提供者类型创建相应的 provider
+    // Create the matching provider implementation
     let provider = create_oauth_provider(provider_config, &provider_name);
     
-    // 1. 使用授权码交换访问令牌
+    // 1. Exchange the authorization code for an access token
     let (access_token, expire_duration) = provider.exchange_token(&params.code, &redirect_uri).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     debug!("Get a access token expiring in {}s", expire_duration.as_secs());
     
-    // 2. 获取用户信息
+    // 2. Fetch user information
     let user_info = provider.get_user_info(&access_token).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     
-    debug!("用户信息获取成功: nickname={}", user_info.nickname);
+    debug!("User info fetched successfully: nickname={}", user_info.nickname);
     
-    // 3. 创建 token 并设置 cookie
+    // 3. Create the token and set the cookie
     let token = TokenInformation {
         access_token,
         provider_name,
@@ -302,22 +302,22 @@ pub async fn callback(
     
     let jar = jar.add(token_cookie);
     
-    // 重定向到首页
+    // Redirect to the home page
     Ok((jar, Redirect::to("/")))
 }
 
 
 
-/// 获取当前用户信息
+/// Get the current user information
 /// 
-/// 此函数依赖于 auth_middleware 将用户信息注入到请求的 extensions 中
+/// This function depends on auth_middleware inserting user info into request extensions
 pub async fn get_user(user: UnifiedUserInfo) -> Json<UnifiedUserInfo> {
     Json(user)
 }
 
-/// 登出
+/// Log out
 pub async fn logout(jar: CookieJar) -> impl IntoResponse {
-    info!("用户登出");
+    info!("User logged out");
     
     let mut token_cookie = Cookie::from("access_token");
     token_cookie.set_path("/");
@@ -327,23 +327,23 @@ pub async fn logout(jar: CookieJar) -> impl IntoResponse {
     (jar, Redirect::to("/"))
 }
 
-/// 认证中间件
+/// Authentication middleware
 /// 
-/// 此中间件会验证用户的认证状态，并从 OAuth 服务器获取用户信息，
-/// 然后将用户信息存储到请求的 extensions 中，供下游 handler 使用。
+/// This middleware validates the user's authentication state, fetches user info
+/// from the OAuth server, and stores it in request extensions for downstream handlers.
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     mut request: Request,
     next: Next,
 ) -> Result<Response, (StatusCode, CookieJar, String)> {
-    // 从 cookie 中获取 token
+    // Read the token from the cookie
     let token_cookie = match jar.get("access_token") {
         Some(x) => x,
         None => { return Err((StatusCode::UNAUTHORIZED, jar, "Not authenticated".to_string())); }
     };
 
-    // 验证并解析 token
+    // Validate and parse the token
     let token_claims: TokenInformation = match token_cookie.value().verify_with_key(state.secret()) {
         Ok(x) => x,
         Err(_) => {
@@ -351,19 +351,19 @@ pub async fn auth_middleware(
         }
     };
 
-    // 检查 token 是否过期
+    // Check whether the token has expired
     if SystemTime::now() > token_claims.expire_date {
         return Err((StatusCode::UNAUTHORIZED, jar.remove(Cookie::from("access_token")), "Login token expired".to_string()));
     }
 
-    // 从 OAuth 服务器获取用户信息
+    // Retrieve user info from the OAuth server
     let user_info = token_claims.user_info;
 
     debug!("User authorized: {user_info:?}");
 
-    // 将用户信息存储到请求的 extensions 中
+    // Store user info in request extensions
     request.extensions_mut().insert(user_info);
 
-    // 继续处理请求
+    // Continue handling the request
     Ok(next.run(request).await)
 }

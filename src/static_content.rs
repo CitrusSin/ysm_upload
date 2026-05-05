@@ -11,7 +11,7 @@ struct Assets;
 pub async fn serve_static(uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     
-    // 如果路径为空，返回 index.html
+    // Return index.html when the path is empty
     let path = if path.is_empty() || path == "/" {
         "index.html"
     } else {
@@ -28,7 +28,7 @@ pub async fn serve_static(uri: axum::http::Uri) -> Response {
             ).into_response()
         }
         None => {
-            // 如果文件不存在，返回 index.html (用于 SPA 路由)
+            // Return index.html when the file does not exist, for SPA routes
             match Assets::get("index.html") {
                 Some(content) => {
                     (

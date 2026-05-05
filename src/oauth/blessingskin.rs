@@ -42,7 +42,7 @@ impl OAuthProvider for BlessingSkinProvider {
     fn get_authorize_url(&self, redirect_uri: &str, state: &str) -> String {
         let scopes = &self.config.scopes;
         
-        // 从 provider_type 中提取 base URL
+        // Extract the base URL from provider_type
         let base_url = self.config.provider_type.base_url().trim_end_matches('/');
         
         format!(
@@ -58,7 +58,7 @@ impl OAuthProvider for BlessingSkinProvider {
     async fn exchange_token(&self, code: &str, redirect_uri: &str) -> Result<(String, Duration)> {
         let client = reqwest::Client::new();
         
-        // 从 provider_type 中提取 base URL
+        // Extract the base URL from provider_type
         let base_url = self.config.provider_type.base_url().trim_end_matches('/');
         
         let token_data: HashMap<String, serde_json::Value> = client
@@ -89,7 +89,7 @@ impl OAuthProvider for BlessingSkinProvider {
     async fn get_user_info(&self, access_token: &str) -> Result<UnifiedUserInfo> {
         let client = reqwest::Client::new();
         
-        // 从 provider_type 中提取 base URL
+        // Extract the base URL from provider_type
         let base_url = match &self.config.provider_type {
             OAuthProviderType::BlessingSkin(url) => url.as_str(),
             _ => panic!("Invalid provider type for BlessingSkinProvider"),
@@ -101,9 +101,9 @@ impl OAuthProvider for BlessingSkinProvider {
             .send().await?
             .json().await?;
 
-        debug!("BlessingSkin 用户信息获取成功: uid={}, nickname={}", user_info.uid, user_info.nickname);
+        debug!("BlessingSkin user info fetched successfully: uid={}, nickname={}", user_info.uid, user_info.nickname);
 
-        // 获取profiles
+        // Fetch profiles
         let profs: Vec<BlessingSkinProfile> = client
             .get(format!("{}/api/players", base_url))
             .bearer_auth(access_token)
@@ -122,7 +122,7 @@ impl OAuthProvider for BlessingSkinProvider {
 
         debug!("Profiles: {:?}", profiles);
 
-        // 转换为统一格式
+        // Convert to the unified format
         Ok(UnifiedUserInfo {
             nickname: user_info.nickname,
             provider: self.name.clone(),

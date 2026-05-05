@@ -20,29 +20,29 @@ pub struct ServerConfig {
     pub port: u16,
 }
 
-/// OAuth 提供者配置集合
+/// Collection of OAuth provider configurations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthProvidersConfig {
-    /// 前缀 URL（用于生成回调地址）
+    /// Prefix URL used to build callback addresses
     pub prefix_url: String,
-    /// 密钥字符串（用于签名 token）
+    /// Secret string used to sign tokens
     pub secret_string: String,
-    /// 各个提供者的配置
+    /// Configuration for each provider
     pub providers: HashMap<String, OAuthProviderConfig>,
 }
 
-/// 单个 OAuth 提供者配置
+/// Configuration for a single OAuth provider
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthProviderConfig {
-    /// 提供者类型
+    /// Provider type
     pub provider_type: OAuthProviderType,
-    /// 客户端 ID
+    /// Client ID
     pub client_id: String,
-    /// 客户端密钥
+    /// Client secret
     pub client_secret: String,
-    /// 申请权限
+    /// Requested scopes
     pub scopes: Vec<String>,
-    /// 是否启用
+    /// Whether the provider is enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
@@ -60,18 +60,18 @@ fn default_true() -> bool {
 }
 
 impl Config {
-    /// 加载配置文件
+    /// Load the configuration file
     pub fn load(path: &str) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let config: Config = serde_yaml::from_str(&content)?;
         Ok(config)
     }
 
-    /// 创建默认配置文件
+    /// Create a default configuration file
     pub fn create_default(path: &str) -> Result<()> {
         let mut providers = HashMap::new();
         
-        // BlessingSkin 提供者示例配置
+        // Example BlessingSkin provider configuration
         providers.insert("littleskin".to_string(), OAuthProviderConfig {
             provider_type: OAuthProviderType::BlessingSkin("https://littleskin.cn".to_string()),
             client_id: "your_client_id_here".to_string(),
@@ -80,13 +80,13 @@ impl Config {
             enabled: true,
         });
 
-        // Microsoft 提供者示例配置
+        // Example Microsoft provider configuration
         providers.insert("microsoft".to_string(), OAuthProviderConfig {
             provider_type: OAuthProviderType::Microsoft,
             client_id: "your_azure_client_id".to_string(),
             client_secret: "your_client_secret_here".to_string(),
             scopes: vec!["XboxLive.signin".to_string()],
-            enabled: false, // 默认禁用
+            enabled: false, // Disabled by default
         });
 
         let default_config = Config {
