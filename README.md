@@ -17,55 +17,20 @@
 > 当前真正实现完成的上传后端是 **MCSManager**。<br>
 > `LocalFile`、`Sftp`、`RsyncOverSsh`、`Rsync` 配置项已经预留，但代码里还没有实现。
 
-## 运行要求
+## 首次使用
 
-- Rust（建议使用稳定版）
-- `pnpm`
-- 一个可用的前端子模块
-- 可访问的 OAuth 提供商
-- 可访问的 Minecraft RCON
-- 如果使用默认上传方案，还需要可访问的 MCSManager 面板 / daemon
+### 1. 先启动一次服务
 
-## 快速开始
+如果当前目录没有 `config.yml`，服务首次启动时会自动生成默认配置并退出。<br>
+先生成模板，再按实际环境填写。
 
-### 1. 拉取仓库和前端子模块
-
-这个项目的前端在 `frontend` 子模块里，首次拉取后要先初始化：
-
-```bash
-git clone https://github.com/CitrusSin/ysm_upload.git
-cd ysm_upload
-git submodule update --init --recursive
-```
-
-### 2. 安装前端依赖
-
-```bash
-cd frontend
-pnpm install
-cd ..
-```
-
-### 3. 首次启动，生成配置文件
-
-```bash
-cargo run
-```
-
-如果当前目录没有 `config.yml`，程序会自动生成一个默认配置，然后直接退出。<br>
-这一步的目的就是先把配置模板写出来。
-
-### 4. 修改 `config.yml`
+### 2. 修改 `config.yml`
 
 把 OAuth、RCON、MCSManager 等配置改成你自己的实际值。
 
-### 5. 再次启动
+### 3. 再次启动服务
 
-```bash
-cargo run
-```
-
-服务默认监听：
+完成配置后重新启动即可。默认监听地址是：
 
 ```text
 http://127.0.0.1:3000
@@ -318,26 +283,12 @@ mcsmanager:
   兼容旧字段名 `instance_uuid`
 - `upload_dir`: 上传目录
 
-## 一个最小可用思路
+## 上线前最少需要确认的内容
 
-如果你只是想先跑起来，最少需要保证下面几件事：
+如果你只是想先把服务用起来，至少要确认下面几项：
 
-1. `frontend` 子模块已经初始化
-2. 本机安装了 `pnpm`
-3. `oauth.providers` 里至少启用一个可用提供商
-4. `rcon` 能正常连接到 Minecraft 服务端
-5. `ysm_storage.backend` 使用 `MCSManager`
-6. `mcsmanager.enabled` 为 `true`，并且 `base_url`、`api_key`、`daemon_id`、`instance_id` 已填写
-
-## 开发与校验
-
-项目当前 CI 使用的是下面这组命令：
-
-```bash
-cd frontend && pnpm install --frozen-lockfile
-cd frontend && pnpm build
-cargo build --verbose
-cargo test --verbose
-```
-
-如果没有初始化 `frontend` 子模块，或者没有生成 `frontend/dist`，Rust 编译会失败。
+1. `oauth.providers` 里至少启用一个可用提供商
+2. `rcon` 能正常连接到 Minecraft 服务端
+3. `ysm_storage.backend` 使用 `MCSManager`
+4. `mcsmanager.enabled` 为 `true`
+5. `mcsmanager.base_url`、`api_key`、`daemon_id`、`instance_id` 已正确填写
