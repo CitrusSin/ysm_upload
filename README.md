@@ -36,6 +36,34 @@
 http://127.0.0.1:3000
 ```
 
+## 从源码构建
+
+如果你不是直接使用现成二进制，而是要自己从仓库源码运行，可以按下面步骤准备：
+
+1. 初始化前端子模块：
+
+   ```bash
+   git submodule update --init --recursive
+   ```
+
+2. 安装 `pnpm`，然后构建前端资源：
+
+   ```bash
+   cd frontend
+   pnpm install
+   pnpm build
+   ```
+
+3. 回到项目根目录后构建或运行后端：
+
+   ```bash
+   cargo build --release
+   # 或
+   cargo run
+   ```
+
+> `frontend/dist` 会被后端打包为静态资源；如果没有先初始化前端子模块并完成前端构建，Rust 编译阶段会因为缺少这部分文件而失败。
+
 ## 基础使用方法
 
 ### 浏览器使用流程
