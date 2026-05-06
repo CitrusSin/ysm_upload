@@ -2,7 +2,7 @@ pub mod blessingskin;
 pub mod littleskin;
 pub mod microsoft;
 
-use crate::{app_error::AppResult, external_api::YggdrasilProfile};
+use crate::{AppResult, external_api::YggdrasilProfile};
 
 use axum::{
     extract::{Path, Query, State, FromRequestParts, Request},

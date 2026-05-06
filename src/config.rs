@@ -1,5 +1,9 @@
 use anyhow::Result;
+use rand::distr::Distribution;
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
 
 use std::fs;
 use std::collections::HashMap;
@@ -276,6 +280,8 @@ impl Config {
 
     /// Create a default configuration file
     pub fn create_default(path: &str) -> Result<()> {
+        let mut rng = UnwrapErr(SysRng);
+
         let mut providers = HashMap::new();
         
         // Example BlessingSkin provider configuration
@@ -288,7 +294,7 @@ impl Config {
                 "Player.Read".to_string(),
                 "PremiumVerification.Read".to_string(),
             ],
-            enabled: true,
+            enabled: false,
         });
 
         // Example Microsoft provider configuration
@@ -302,12 +308,12 @@ impl Config {
 
         let default_config = Config {
             server: ServerConfig {
-                host: "127.0.0.1".to_string(),
+                host: "::".to_string(),
                 port: 3000,
             },
             oauth: OAuthProvidersConfig {
-                prefix_url: "http://127.0.0.1:3000".to_string(),
-                secret_string: "your-secret-here-change-this-in-production".to_string(),
+                prefix_url: "http://localhost:3000".to_string(),
+                secret_string: bs58::encode(rng.random::<[u8;32]>()).into_string(),
                 providers,
             },
             rcon: RconConfig {

@@ -1,17 +1,15 @@
-use axum::{extract::DefaultBodyLimit, routing::{get, post}, Router};
-use hmac::Hmac;
-use hmac::digest::KeyInit;
-use sha2::Sha256;
+use axum::{
+    extract::DefaultBodyLimit,
+    routing::{get, post},
+    Router
+};
 use tower_http::trace::{self, TraceLayer};
-use std::{net::SocketAddr, path::Path};
+use std::net::{SocketAddr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber;
-use anyhow::Result;
 
-use crate::config::{Config, OAuthProviderConfig};
-
-mod app_error;
+mod app;
 mod static_content;
 mod external_api;
 mod oauth;
@@ -19,81 +17,16 @@ mod rcon;
 mod config;
 mod ysm;
 
-const CONFIG_FILE: &str = "config.yml";
+use app::{AppState, AppResult};
+
 const YSM_UPLOAD_MAX_BODY_SIZE: usize = 64 * 1024 * 1024;
 
-pub struct AppState {
-    pub config: Config,
-    
-    secret_key: Hmac<Sha256>
-}
-
-impl AppState {
-    pub fn new() -> Self {
-        // Check whether the configuration file exists
-        if !Path::new(CONFIG_FILE).exists() {
-            warn!("Configuration file not found, creating a default one...");
-            
-            match config::Config::create_default(CONFIG_FILE) {
-                Ok(_) => {
-                    info!("Created default configuration file: {}", CONFIG_FILE);
-                    info!("Please update the configuration and run the program again");
-                    std::process::exit(0);
-                }
-                Err(e) => {
-                    error!("Failed to create configuration file: {:?}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        // Load the configuration file
-        let app_config = match config::Config::load(CONFIG_FILE) {
-            Ok(config) => {
-                info!("Configuration file loaded successfully: {}", CONFIG_FILE);
-                config
-            }
-            Err(e) => {
-                error!("Failed to load configuration file: {:?}", e);
-                std::process::exit(1);
-            }
-        };
-
-        let secret_key = Hmac::<Sha256>::new_from_slice(app_config.oauth.secret_string.as_bytes())
-            .expect("HMAC can take key of any size");
-
-        AppState { config: app_config, secret_key }
-    }
-
-
-    /// Get the redirect URL
-    pub fn get_redirect_uri(&self, provider: &str) -> String {
-        format!("{}/api/oauth/{}/callback", self.config.oauth.prefix_url, provider)
-    }
-
-    /// Get all enabled providers
-    pub fn get_enabled_providers(&self) -> Vec<(String, &OAuthProviderConfig)> {
-        self.config.oauth.providers
-            .iter()
-            .filter(|(_, config)| config.enabled)
-            .map(|(name, config)| (name.clone(), config))
-            .collect()
-    }
-
-    /// Get a specific provider configuration
-    pub fn get_provider(&self, name: &str) -> Option<&OAuthProviderConfig> {
-        self.config.oauth.providers.get(name)
-    }
-
-    pub fn secret(&self) -> &Hmac<Sha256> {
-        &self.secret_key
-    }
-}
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     // Initialize tracing logs
     tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .with_target(false)
         .with_level(true)
         .init();
@@ -154,8 +87,7 @@ async fn main() -> Result<()> {
 
     // Bind the address
     let addr = SocketAddr::from((
-        app_state.config.server.host.parse::<std::net::IpAddr>()
-            .unwrap_or_else(|_| std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))),
+        app_state.config.server.host.parse::<std::net::IpAddr>()?,
         app_state.config.server.port
     ));
     

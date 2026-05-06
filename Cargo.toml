@@ -13,7 +13,7 @@ rust-embed = "8.10.0"
 mime_guess = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.12", features = ["json", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 uuid = { version = "1.19", features = ["v4", "serde"] }
 urlencoding = "2.1"
 serde_yaml = "0.9"
@@ -30,6 +30,8 @@ async_from = "0.2.0"
 bs58 = "0.5.1"
 md5 = "0.8.0"
 humantime-serde = "1.1.1"
+rand = "0.10.1"
+clap = "4.6.1"
 
 [build-dependencies]
 rust-embed = "8.10.0"
