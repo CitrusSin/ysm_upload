@@ -103,45 +103,19 @@ ysm auth <profile_name> add <stored_file_name>
 
 ## `config.yml` 说明
 
-首次运行会自动生成一个默认的 `config.yml`。下面是各字段的作用。
-
-### `server`
-
-服务监听地址。
+首次运行会自动生成一个默认的 `config.yml`。如果你想直接照着改，可以参考下面这个带注释的完整示例：
 
 ```yaml
 server:
-  host: 127.0.0.1
-  port: 3000
-```
+  host: 127.0.0.1 # 服务绑定地址
+  port: 3000 # 服务监听端口
 
-- `host`: 绑定地址
-- `port`: 监听端口
-
-### `oauth`
-
-OAuth 总配置。
-
-```yaml
 oauth:
-  prefix_url: http://127.0.0.1:3000
-  secret_string: change-me
-  providers: {}
-```
-
-- `prefix_url`: 对外访问这个服务的基础地址，用来拼接回调地址
-- `secret_string`: 用来签名登录状态 Cookie，生产环境必须改掉
-- `providers`: 多个 OAuth 提供商配置
-
-#### `oauth.providers.<name>`
-
-每个提供商都是一个自定义名字，例如 `littleskin`、`microsoft`。
-
-```yaml
-oauth:
+  prefix_url: http://127.0.0.1:3000 # 对外访问地址，用来拼接 OAuth 回调
+  secret_string: your-secret-here-change-this-in-production # Cookie 签名密钥，生产环境必须修改
   providers:
     littleskin:
-      provider_type: littleskin
+      provider_type: littleskin # 可选：littleskin / microsoft / blessingskin=<站点地址>
       client_id: your_client_id_here
       client_secret: your_client_secret_here
       scopes:
@@ -149,139 +123,53 @@ oauth:
         - Player.Read
         - PremiumVerification.Read
       enabled: true
-```
+    microsoft:
+      provider_type: microsoft
+      client_id: your_azure_client_id
+      client_secret: your_client_secret_here
+      scopes:
+        - XboxLive.signin
+      enabled: false # 默认示例保留，但默认不启用
 
-- `provider_type`: 提供商类型
-  - `littleskin`
-  - `microsoft`
-  - `blessingskin=<站点地址>`
-- `client_id`: OAuth 应用 ID
-- `client_secret`: OAuth 应用密钥
-- `scopes`: 申请的权限列表
-- `enabled`: 是否启用
-
-### `rcon`
-
-Minecraft 服务器 RCON 配置。
-
-```yaml
 rcon:
   host: 127.0.0.1
   port: 25575
   password: your_rcon_password_here
-```
 
-- `host`: RCON 地址
-- `port`: RCON 端口
-- `password`: RCON 密码
+reload_delay: 3s # 执行 ysm model reload 后等待多久再授权，支持 1s / 500ms / 2m
 
-### `reload_delay`
-
-```yaml
-reload_delay: 3s
-```
-
-执行 `ysm model reload` 后，等待多久再执行授权命令。<br>
-支持 `1s`、`500ms`、`2m` 这类人类可读时长格式。
-
-### `ysm_storage`
-
-上传后端选择。
-
-```yaml
 ysm_storage:
-  backend: MCSManager
-```
-
-可选值：
-
-- `MCSManager`
-- `LocalFile`
-- `Sftp`
-- `RsyncOverSsh`
-- `Rsync`
-
-> 目前只有 `MCSManager` 实际可用。
-
-#### `ysm_storage.local`
-
-```yaml
-ysm_storage:
+  backend: MCSManager # 可选：MCSManager / LocalFile / Sftp / RsyncOverSsh / Rsync
   local:
-    upload_dir: /config/yes_steve_model/auth
-```
-
-- `upload_dir`: 本地目录
-
-#### `ysm_storage.sftp`
-
-```yaml
-ysm_storage:
+    upload_dir: /config/yes_steve_model/auth # LocalFile 后端目录
   sftp:
     host: example.com
     port: 22
     username: root
     remote_dir: /config/yes_steve_model/auth
-```
-
-- `host`: SFTP 主机
-- `port`: SFTP 端口
-- `username`: 登录用户名
-- `remote_dir`: 远端目录
-
-#### `ysm_storage.rsync_over_ssh`
-
-```yaml
-ysm_storage:
   rsync_over_ssh:
     host: example.com
     port: 22
     username: root
     remote_dir: /config/yes_steve_model/auth
-```
-
-- `host`: SSH 主机
-- `port`: SSH 端口
-- `username`: SSH 用户名
-- `remote_dir`: 远端目录
-
-#### `ysm_storage.rsync`
-
-```yaml
-ysm_storage:
   rsync:
     host: example.com
     port: 873
     module: ysm
     remote_dir: auth
-```
 
-- `host`: rsync 主机
-- `port`: rsync 端口
-- `module`: rsync module
-- `remote_dir`: module 内目录
-
-### `mcsmanager`
-
-默认上传方案使用的 MCSManager 配置。
-
-```yaml
 mcsmanager:
-  enabled: true
+  enabled: true # 使用默认上传方案时保持启用
   base_url: http://127.0.0.1:23333
   api_key: your_api_key
   daemon_id: your_daemon_id
-  instance_id: your_instance_uuid
+  instance_id: your_instance_uuid # 兼容旧字段名 instance_uuid
   upload_dir: /config/yes_steve_model/auth
 ```
 
-- `enabled`: 是否启用 MCSManager 上传
-- `base_url`: MCSManager 面板地址
-- `api_key`: 面板 API Key
-- `daemon_id`: 目标 daemon ID
-- `instance_id`: 实例 UUID<br>
-  兼容旧字段名 `instance_uuid`
-- `upload_dir`: 上传目录
+- `providers` 下的名字可以自定义，例如 `littleskin`、`microsoft`
+- `backend` 决定当前实际使用哪个上传后端
+- 目前实际可用的上传后端只有 `MCSManager`，其余配置项还是预留状态
 
 ## 上线前最少需要确认的内容
 
