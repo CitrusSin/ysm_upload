@@ -1,5 +1,25 @@
-use std::process::Command;
 use std::path::Path;
+use std::process::{Command, Output};
+
+fn emit_cargo_warnings(output: &[u8]) {
+    for line in String::from_utf8_lossy(output).lines() {
+        if !line.trim().is_empty() {
+            println!("cargo:warning={}", line);
+        }
+    }
+}
+
+fn run_pnpm(frontend_dir: &Path, args: &[&str]) -> std::io::Result<Output> {
+    let mut command = if cfg!(target_os = "windows") {
+        let mut command = Command::new("cmd");
+        command.arg("/C").arg("pnpm");
+        command
+    } else {
+        Command::new("pnpm")
+    };
+
+    command.args(args).current_dir(frontend_dir).output()
+}
 
 fn main() {
     println!("cargo:rerun-if-changed=frontend/src");
@@ -17,12 +37,14 @@ fn main() {
         Command::new("cmd")
             .args(&["/C", "pnpm", "--version"])
             .output()
-            .is_ok()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
     } else {
         Command::new("pnpm")
             .arg("--version")
             .output()
-            .is_ok()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
     };
 
     if !has_pnpm {
@@ -33,24 +55,18 @@ fn main() {
     println!("cargo:warning=Building frontend...");
 
     // 安装依赖
-    let install_status = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(&["/C", "pnpm", "install"])
-            .current_dir(frontend_dir)
-            .status()
-    } else {
-        Command::new("pnpm")
-            .arg("install")
-            .current_dir(frontend_dir)
-            .status()
-    };
+    let install_status = run_pnpm(frontend_dir, &["install"]);
 
     match install_status {
-        Ok(status) if status.success() => {
+        Ok(output) if output.status.success() => {
+            emit_cargo_warnings(&output.stdout);
+            emit_cargo_warnings(&output.stderr);
             println!("cargo:warning=Frontend dependencies installed");
         }
-        Ok(status) => {
-            println!("cargo:warning=Failed to install frontend dependencies: exit code {}", status);
+        Ok(output) => {
+            emit_cargo_warnings(&output.stdout);
+            emit_cargo_warnings(&output.stderr);
+            println!("cargo:warning=Failed to install frontend dependencies: exit code {}", output.status);
             return;
         }
         Err(e) => {
@@ -60,24 +76,18 @@ fn main() {
     }
 
     // 构建前端
-    let build_status = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(&["/C", "pnpm", "run", "build"])
-            .current_dir(frontend_dir)
-            .status()
-    } else {
-        Command::new("pnpm")
-            .args(&["run", "build"])
-            .current_dir(frontend_dir)
-            .status()
-    };
+    let build_status = run_pnpm(frontend_dir, &["run", "build"]);
 
     match build_status {
-        Ok(status) if status.success() => {
+        Ok(output) if output.status.success() => {
+            emit_cargo_warnings(&output.stdout);
+            emit_cargo_warnings(&output.stderr);
             println!("cargo:warning=Frontend build completed successfully");
         }
-        Ok(status) => {
-            panic!("Frontend build failed with exit code {}", status);
+        Ok(output) => {
+            emit_cargo_warnings(&output.stdout);
+            emit_cargo_warnings(&output.stderr);
+            panic!("Frontend build failed with exit code {}", output.status);
         }
         Err(e) => {
             panic!("Failed to run frontend build: {}", e);
