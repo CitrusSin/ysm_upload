@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
     Router
 };
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use tower_http::trace::{self, TraceLayer};
 use std::{net::SocketAddr, path::Path};
 use std::sync::Arc;
@@ -25,39 +25,25 @@ const YSM_UPLOAD_MAX_BODY_SIZE: usize = 64 * 1024 * 1024;
 
 #[derive(Parser)]
 struct CliArgs {
-    /// Path to the configuration file
+    /// Path to the configuration file.
     #[clap(short, long, default_value = "config.yml")]
     config: String,
 
-    /// Enable debug logging
+    /// Enable debug logging.
     /// This will print more detailed logs, including request and response bodies, which can be useful for troubleshooting.
     #[clap(short = 'v', long)]
     verbose: bool,
 
-    /// Show the version information
+    /// Show the version information.
     /// This will print the version of the application and exit.
     #[clap(short = 'V', long)]
     version: bool,
 }
 
-impl CliArgs {
-    fn show_help_and_exit() -> ! {
-        let mut cmd = Self::command();
-        cmd.print_help().expect("Failed to print help");
-        std::process::exit(0);
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let cli_args = CliArgs::parse();
 
-    let cli_args = match CliArgs::try_parse() {
-        Ok(args) => args,
-        Err(e) => {
-            eprintln!("Error parsing command-line arguments: {e}");
-            CliArgs::show_help_and_exit();
-        }
-    };
     if cli_args.version {
         println!("YSM Upload Server version {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
