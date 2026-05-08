@@ -1,12 +1,12 @@
-use anyhow::Result;
-use rand::distr::Distribution;
-use rand::{Rng, RngExt};
+use anyhow::{Context, Result};
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use rand::rand_core::UnwrapErr;
 use rand::rngs::SysRng;
 
 use std::fs;
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::Duration;
 
 use crate::oauth::OAuthProviderType;
@@ -71,8 +71,6 @@ pub struct YsmStorageConfig {
     pub backend: YsmStorageBackend,
     pub local: Option<LocalStorageConfig>,
     pub sftp: Option<SftpStorageConfig>,
-    pub rsync_over_ssh: Option<RsyncOverSshStorageConfig>,
-    pub rsync: Option<RsyncStorageConfig>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -81,8 +79,6 @@ pub enum YsmStorageBackend {
     MCSManager,
     LocalFile,
     Sftp,
-    RsyncOverSsh,
-    Rsync,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +94,16 @@ impl Default for LocalStorageConfig {
     }
 }
 
+impl LocalStorageConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.upload_dir.trim().is_empty() {
+            anyhow::bail!("ysm_storage.local.upload_dir is not configured");
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SftpStorageConfig {
     #[serde(default)]
@@ -106,6 +112,8 @@ pub struct SftpStorageConfig {
     pub port: u16,
     #[serde(default)]
     pub username: String,
+    #[serde(default)]
+    pub password: String,
     #[serde(default)]
     pub remote_dir: String,
 }
@@ -116,56 +124,28 @@ impl Default for SftpStorageConfig {
             host: String::new(),
             port: default_sftp_port(),
             username: String::new(),
+            password: String::new(),
             remote_dir: default_ysm_upload_dir(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RsyncOverSshStorageConfig {
-    #[serde(default)]
-    pub host: String,
-    #[serde(default = "default_ssh_port")]
-    pub port: u16,
-    #[serde(default)]
-    pub username: String,
-    #[serde(default)]
-    pub remote_dir: String,
-}
-
-impl Default for RsyncOverSshStorageConfig {
-    fn default() -> Self {
-        Self {
-            host: String::new(),
-            port: default_ssh_port(),
-            username: String::new(),
-            remote_dir: default_ysm_upload_dir(),
+impl SftpStorageConfig {
+    pub fn validate(&self) -> Result<()> {
+        for (field_name, value) in [
+            ("ysm_storage.sftp.host", self.host.trim()),
+            ("ysm_storage.sftp.username", self.username.trim()),
+            ("ysm_storage.sftp.password", self.password.trim()),
+        ] {
+            if value.is_empty() {
+                anyhow::bail!("{} is not configured", field_name);
+            }
         }
+
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RsyncStorageConfig {
-    #[serde(default)]
-    pub host: String,
-    #[serde(default = "default_rsync_port")]
-    pub port: u16,
-    #[serde(default)]
-    pub module: String,
-    #[serde(default)]
-    pub remote_dir: String,
-}
-
-impl Default for RsyncStorageConfig {
-    fn default() -> Self {
-        Self {
-            host: String::new(),
-            port: default_rsync_port(),
-            module: String::new(),
-            remote_dir: default_ysm_upload_dir(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCSManagerConfig {
@@ -230,14 +210,6 @@ fn default_sftp_port() -> u16 {
     22
 }
 
-fn default_ssh_port() -> u16 {
-    22
-}
-
-fn default_rsync_port() -> u16 {
-    873
-}
-
 impl Config {
     fn check_integrity(&self) -> Result<()> {
         match &self.ysm_storage.backend {
@@ -247,31 +219,31 @@ impl Config {
                 }
             },
             YsmStorageBackend::LocalFile => {
-                if self.ysm_storage.local.is_none() {
-                    anyhow::bail!("YSM storage backend is set to LocalFile, but local storage configuration is missing");
-                }
+                let local = self
+                    .ysm_storage
+                    .local
+                    .as_ref()
+                    .context("YSM storage backend is set to LocalFile, but local storage configuration is missing")?;
+                local
+                    .validate()
+                    .context("YSM storage backend is set to LocalFile, but local storage configuration is invalid")?;
             },
             YsmStorageBackend::Sftp => {
-                if self.ysm_storage.sftp.is_none() {
-                    anyhow::bail!("YSM storage backend is set to Sftp, but SFTP storage configuration is missing");
-                }
-            },
-            YsmStorageBackend::Rsync => {
-                if self.ysm_storage.rsync.is_none() {
-                    anyhow::bail!("YSM storage backend is set to Rsync, but rsync storage configuration is missing");
-                }
-            },
-            YsmStorageBackend::RsyncOverSsh => {
-                if self.ysm_storage.rsync_over_ssh.is_none() {
-                    anyhow::bail!("YSM storage backend is set to RsyncOverSsh, but rsync-over-ssh storage configuration is missing");
-                }
+                let sftp = self
+                    .ysm_storage
+                    .sftp
+                    .as_ref()
+                    .context("YSM storage backend is set to Sftp, but SFTP storage configuration is missing")?;
+                sftp
+                    .validate()
+                    .context("YSM storage backend is set to Sftp, but SFTP storage configuration is invalid")?;
             }
         }
         Ok(())
     }
 
     /// Load the configuration file
-    pub fn load(path: &str) -> Result<Self> {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let config: Config = serde_yaml::from_str(&content)?;
         config.check_integrity()?;
@@ -279,7 +251,7 @@ impl Config {
     }
 
     /// Create a default configuration file
-    pub fn create_default(path: &str) -> Result<()> {
+    pub fn create_default(path: impl AsRef<Path>) -> Result<()> {
         let mut rng = UnwrapErr(SysRng);
 
         let mut providers = HashMap::new();

@@ -18,14 +18,15 @@ use uuid::Uuid;
 use std::{fmt, str::FromStr, sync::Arc, time::{Duration, SystemTime}};
 use crate::AppState;
 use tracing::{info, debug};
-use async_trait::async_trait;
 
 use anyhow::Result;
+
+use async_trait::async_trait;
 
 // ============= Common Data Structures =============
 
 /// OAuth2 authorization code query parameters
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AuthRequest {
     pub code: String,
     pub state: String,
@@ -267,10 +268,10 @@ pub async fn login(
 
 /// Handle the OAuth2 callback for a dynamic route
 pub async fn callback(
+    jar: CookieJar,
     State(state): State<Arc<AppState>>,
     Path(provider_name): Path<String>,
     Query(params): Query<AuthRequest>,
-    jar: CookieJar,
 ) -> AppResult<Response> {
     debug!("Received {} OAuth2 callback", provider_name);
     debug!("Authorization code: {}", params.code);

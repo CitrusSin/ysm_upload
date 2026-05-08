@@ -1,32 +1,17 @@
-use anyhow::{Context, Result, bail, ensure};
+use std::borrow::Cow;
+
+use anyhow::{Context, Result, ensure};
 use reqwest::{Url, multipart};
 use serde::Deserialize;
 
-use crate::config::{Config, MCSManagerConfig, YsmStorageBackend};
+use crate::config::MCSManagerConfig;
 
-pub struct UploadResult {
-    pub stored_file_name: String,
-    pub upload_dir: String,
-}
+use super::UploadResult;
 
-pub async fn upload_model(
-    config: &Config,
-    file_name: &str,
-    file_bytes: Vec<u8>,
-) -> Result<UploadResult> {
-    match config.ysm_storage.backend {
-        YsmStorageBackend::MCSManager => upload_via_mcsmanager(&config.mcsmanager, file_name, file_bytes).await,
-        YsmStorageBackend::LocalFile => bail!("YSM local file storage backend is not implemented yet"),
-        YsmStorageBackend::Sftp => bail!("YSM SFTP storage backend is not implemented yet"),
-        YsmStorageBackend::RsyncOverSsh => bail!("YSM rsync-over-ssh storage backend is not implemented yet"),
-        YsmStorageBackend::Rsync => bail!("YSM rsync storage backend is not implemented yet"),
-    }
-}
-
-async fn upload_via_mcsmanager(
+pub async fn upload_via_mcsmanager(
     mcsm: &MCSManagerConfig,
     file_name: &str,
-    file_bytes: Vec<u8>,
+    file_bytes: impl Into<Cow<'static, [u8]>>,
 ) -> Result<UploadResult> {
     let upload_ticket = request_upload_ticket(mcsm).await?;
     upload_file_to_daemon(&mcsm.base_url, &upload_ticket, file_name, file_bytes).await?;
@@ -98,7 +83,7 @@ async fn upload_file_to_daemon(
     base_url: &str,
     ticket: &UploadTicket,
     file_name: &str,
-    file_bytes: Vec<u8>,
+    file_bytes: impl Into<Cow<'static, [u8]>>,
 ) -> Result<()> {
     let content_type = mime_guess::from_path(file_name)
         .first_raw()
@@ -106,7 +91,7 @@ async fn upload_file_to_daemon(
         .to_string();
     let form = multipart::Form::new().part(
         "file",
-        multipart::Part::bytes(file_bytes)
+        multipart::Part::bytes(file_bytes.into())
             .file_name(file_name.to_string())
             .mime_str(&content_type)
             .context("Failed to build multipart upload body")?,

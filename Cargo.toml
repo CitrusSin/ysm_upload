@@ -5,7 +5,7 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-axum = { version = "0.8.8", features = ["multipart"] }
+axum = { version = "0.8.8", features = ["http2", "macros", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "trace"] }
@@ -24,14 +24,22 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["fmt"] }
 hmac = "0.12.1"
 sha2 = { version = "0.10.9" }
-async-trait = "0.1"
 time = "0.3.45"
 async_from = "0.2.0"
 bs58 = "0.5.1"
 md5 = "0.8.0"
 humantime-serde = "1.1.1"
 rand = "0.10.1"
-clap = "4.6.1"
+clap = { version = "4.6.1", features = ["derive"] }
+rusftp = "0.2.1"
+russh = "0.44"
+russh-keys = "0.44"
+async-trait = "0.1.89"
+trait-variant = "0.1.2"
 
 [build-dependencies]
 rust-embed = "8.10.0"
+
+[profile.release]
+opt-level = "z"
+strip = true

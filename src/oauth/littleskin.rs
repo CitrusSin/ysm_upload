@@ -10,7 +10,7 @@ use uuid::Uuid;
 use super::{OAuthProvider, OAuthProviderType, PremiumVerificationStatus, UnifiedUserInfo};
 use crate::{
     config::OAuthProviderConfig,
-    external_api::{mojang::get_profile_from_uuid, YggdrasilProfile},
+    external_api::{YggdrasilProfile, mojang::get_profile_from_uuid},
 };
 
 #[derive(Deserialize, Debug, Clone)]

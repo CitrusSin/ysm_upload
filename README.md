@@ -14,8 +14,8 @@
 - 校验上传的 `profile_uuid` 是否属于当前登录用户
 - 上传完成后自动执行 YSM 重载和授权命令
 
-> 当前真正实现完成的上传后端是 **MCSManager**。<br>
-> `LocalFile`、`Sftp`、`RsyncOverSsh`、`Rsync` 配置项已经预留，但代码里还没有实现。
+> 目前支持的上传后端有：`MCSManager`、`LocalFile`、`Sftp`、`RsyncOverSsh`、`Rsync`。<br>
+> 其中 `Sftp`、`RsyncOverSsh` 现在使用 Rust SSH/SFTP 库直接连接远端；`Rsync` 后端暂时还没有可用的纯 Rust 上传实现。
 
 ## 首次使用
 
@@ -193,11 +193,13 @@ ysm_storage:
     host: example.com
     port: 22
     username: root
+    password: your_ssh_password_here
     remote_dir: /config/yes_steve_model/auth
   rsync_over_ssh:
     host: example.com
     port: 22
     username: root
+    password: your_ssh_password_here
     remote_dir: /config/yes_steve_model/auth
   rsync:
     host: example.com
@@ -216,7 +218,10 @@ mcsmanager:
 
 - `providers` 下的名字可以自定义，例如 `littleskin`、`microsoft`
 - `backend` 决定当前实际使用哪个上传后端
-- 目前实际可用的上传后端只有 `MCSManager`，其余配置项还是预留状态
+- `LocalFile` 直接写入本地目录
+- `Sftp` 通过内置 Rust SSH/SFTP 客户端上传
+- `RsyncOverSsh` 目前也通过内置 Rust SSH/SFTP 客户端上传到远端目录，不再依赖本地 `ssh`/`rsync` 命令
+- `Rsync` 目标是通过 rsync daemon 上传到 `module/remote_dir`，但当前没有接入不依赖外部命令的上传实现
 
 ## 上线前最少需要确认的内容
 
@@ -224,6 +229,7 @@ mcsmanager:
 
 1. `oauth.providers` 里至少启用一个可用提供商
 2. `rcon` 能正常连接到 Minecraft 服务端
-3. `ysm_storage.backend` 使用 `MCSManager`
-4. `mcsmanager.enabled` 为 `true`
-5. `mcsmanager.base_url`、`api_key`、`daemon_id`、`instance_id` 已正确填写
+3. `ysm_storage.backend` 选择了你实际可用的一种上传后端
+4. 如果使用 `MCSManager`，确认 `mcsmanager.enabled` 为 `true`
+5. 如果使用 `MCSManager`，确认 `mcsmanager.base_url`、`api_key`、`daemon_id`、`instance_id` 已正确填写
+6. 如果使用 `Sftp` 或 `RsyncOverSsh`，确认对应的 SSH 密码配置已填写

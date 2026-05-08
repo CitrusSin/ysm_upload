@@ -3,8 +3,9 @@ use axum::{
     routing::{get, post},
     Router
 };
+use clap::{CommandFactory, Parser};
 use tower_http::trace::{self, TraceLayer};
-use std::net::{SocketAddr, Ipv6Addr};
+use std::{net::SocketAddr, path::Path};
 use std::sync::Arc;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber;
@@ -16,23 +17,60 @@ mod oauth;
 mod rcon;
 mod config;
 mod ysm;
+mod storage;
 
 use app::{AppState, AppResult};
 
 const YSM_UPLOAD_MAX_BODY_SIZE: usize = 64 * 1024 * 1024;
 
+#[derive(Parser)]
+struct CliArgs {
+    /// Path to the configuration file
+    #[clap(short, long, default_value = "config.yml")]
+    config: String,
+
+    /// Enable debug logging
+    /// This will print more detailed logs, including request and response bodies, which can be useful for troubleshooting.
+    #[clap(short = 'v', long)]
+    verbose: bool,
+
+    /// Show the version information
+    /// This will print the version of the application and exit.
+    #[clap(short = 'V', long)]
+    version: bool,
+}
+
+impl CliArgs {
+    fn show_help_and_exit() -> ! {
+        let mut cmd = Self::command();
+        cmd.print_help().expect("Failed to print help");
+        std::process::exit(0);
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+
+    let cli_args = match CliArgs::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("Error parsing command-line arguments: {e}");
+            CliArgs::show_help_and_exit();
+        }
+    };
+    if cli_args.version {
+        println!("YSM Upload Server version {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    
     // Initialize tracing logs
     tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
+        .with_max_level(if cli_args.verbose { Level::DEBUG } else { Level::INFO })
         .with_target(false)
         .with_level(true)
         .init();
 
-    
-    let app_state = Arc::new(AppState::new());
+    let app_state = Arc::new(AppState::new(Path::new(&cli_args.config)));
 
     // Routes that require authentication
     let protected_routes = Router::new()

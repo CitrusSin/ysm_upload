@@ -10,8 +10,6 @@ use crate::config::{self, Config, OAuthProviderConfig};
 use hmac::{Hmac, Mac};
 
 
-const CONFIG_FILE: &str = "config.yml";
-
 pub struct AppState {
     pub config: Config,
     
@@ -19,14 +17,14 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(config_path: &Path) -> Self {
         // Check whether the configuration file exists
-        if !Path::new(CONFIG_FILE).exists() {
+        if !config_path.exists() {
             warn!("Configuration file not found, creating a default one...");
             
-            match config::Config::create_default(CONFIG_FILE) {
+            match config::Config::create_default(config_path) {
                 Ok(_) => {
-                    info!("Created default configuration file: {}", CONFIG_FILE);
+                    info!("Created default configuration file: {}", config_path.display());
                     info!("Please update the configuration and run the program again");
                     std::process::exit(0);
                 }
@@ -37,9 +35,9 @@ impl AppState {
             }
         }
         // Load the configuration file
-        let app_config = match config::Config::load(CONFIG_FILE) {
+        let app_config = match config::Config::load(config_path) {
             Ok(config) => {
-                info!("Configuration file loaded successfully: {}", CONFIG_FILE);
+                info!("Configuration file loaded successfully: {}", config_path.display());
                 config
             }
             Err(e) => {

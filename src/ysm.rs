@@ -10,20 +10,13 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::{AppState, AppResult, oauth::UnifiedUserInfo, rcon::RconSession};
-
-mod storage;
+use crate::storage;
 
 pub async fn upload_authorized_model(
     State(state): State<Arc<AppState>>,
     user: UnifiedUserInfo,
     mut multipart: Multipart,
 ) -> AppResult<Json<serde_json::Value>> {
-    state
-        .config
-        .mcsmanager
-        .validate()
-        .context("MCSManager configuration validation failed")?;
-
     let upload = parse_upload_request(&mut multipart).await?;
 
     let owned_profile = user
