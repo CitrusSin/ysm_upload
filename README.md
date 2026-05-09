@@ -1,7 +1,7 @@
 # ysm_upload
 
 一个给 **Yes Steve Model（YSM）** 用的上传服务：<br>
-前端负责登录和上传模型文件，后端负责 OAuth 登录、校验玩家身份、把模型文件上传到存储后端，并通过 Minecraft RCON 执行 `ysm model reload` 和 `ysm auth <玩家名> add <文件名>`。
+前端负责登录和上传模型文件，后端负责 OAuth 登录、校验玩家身份、把模型文件上传到存储后端，并通过 Minecraft RCON 或 MCSManager API 执行 `ysm model reload` 和 `ysm auth <玩家名> add <文件名>`。
 
 ## 功能概览
 
@@ -95,7 +95,7 @@ docker run --rm -p 3000:3000 -v ./data:/data ysm-upload
    - 校验当前用户拥有目标角色 `profile_uuid`
    - 生成模型文件名
    - 上传到存储后端
-   - 连接 RCON 执行模型重载
+  - 通过已配置的命令后端执行模型重载
    - 给对应玩家授权模型
 
 ### 接口说明
@@ -183,6 +183,11 @@ rcon:
   port: 25575
   password: your_rcon_password_here
 
+ysm_command:
+  backend: Rcon # 可选：Rcon / MCSManager
+  mcsm_output_log_size_kb: 64 # 仅 MCSManager 命令后端使用，拉取多少 KB 的尾日志用于比对新增输出
+  mcsm_command_wait: 800ms # 仅 MCSManager 命令后端使用，发命令后等待多久再拉 outputlog
+
 reload_delay: 3s # 执行 ysm model reload 后等待多久再授权，支持 1s / 500ms / 2m
 
 ysm_storage:
@@ -208,7 +213,7 @@ ysm_storage:
     remote_dir: auth
 
 mcsmanager:
-  enabled: true # 使用默认上传方案时保持启用
+  enabled: true # 使用 MCSManager 上传时保持启用；命令后端走 MCSManager 时不要求这个字段为 true
   base_url: http://127.0.0.1:23333
   api_key: your_api_key
   daemon_id: your_daemon_id
@@ -218,6 +223,9 @@ mcsmanager:
 
 - `providers` 下的名字可以自定义，例如 `littleskin`、`microsoft`
 - `backend` 决定当前实际使用哪个上传后端
+- `ysm_command.backend` 决定上传完成后是通过 `Rcon` 还是 `MCSManager` 下发 YSM 命令
+- `ysm_command.mcsm_output_log_size_kb` 控制 MCSManager 命令后端每次比对 outputlog 时读取的日志窗口，允许范围是 `1..=2048`
+- `ysm_command.mcsm_command_wait` 控制 MCSManager 发命令后等待多久再读取 outputlog
 - `LocalFile` 直接写入本地目录
 - `Sftp` 通过内置 Rust SSH/SFTP 客户端上传
 - `RsyncOverSsh` 目前也通过内置 Rust SSH/SFTP 客户端上传到远端目录，不再依赖本地 `ssh`/`rsync` 命令
@@ -228,8 +236,8 @@ mcsmanager:
 如果你只是想先把服务用起来，至少要确认下面几项：
 
 1. `oauth.providers` 里至少启用一个可用提供商
-2. `rcon` 能正常连接到 Minecraft 服务端
+2. 如果 `ysm_command.backend: Rcon`，确认 `rcon` 能正常连接到 Minecraft 服务端
 3. `ysm_storage.backend` 选择了你实际可用的一种上传后端
-4. 如果使用 `MCSManager`，确认 `mcsmanager.enabled` 为 `true`
-5. 如果使用 `MCSManager`，确认 `mcsmanager.base_url`、`api_key`、`daemon_id`、`instance_id` 已正确填写
+4. 如果 `ysm_storage.backend: MCSManager`，确认 `mcsmanager.enabled` 为 `true`
+5. 如果使用 `MCSManager` 上传或命令后端，确认 `mcsmanager.base_url`、`api_key`、`daemon_id`、`instance_id` 已正确填写
 6. 如果使用 `Sftp` 确认对应的 SSH 密码配置已填写

@@ -9,7 +9,13 @@ use serde_json::json;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::{AppState, AppResult, oauth::UnifiedUserInfo, rcon::RconSession};
+use crate::{
+    AppResult, AppState,
+    config::{Config, YsmCommandBackend},
+    external_api::mcsmanager::MCSManagerClient,
+    oauth::UnifiedUserInfo,
+    rcon::RconSession,
+};
 use crate::storage;
 
 pub async fn upload_authorized_model(
@@ -34,18 +40,13 @@ pub async fn upload_authorized_model(
     )
     .await?;
 
-    let mut rcon = RconSession::connect(
-        (state.config.rcon.host.as_str(), state.config.rcon.port),
-        &state.config.rcon.password,
-    )
-    .await
-    .context("Failed to connect to RCON")?;
+    let mut command_executor = CommandExecutor::connect(&state.config).await?;
 
     let reload_command = "ysm model reload";
-    let reload_result = rcon
+    let reload_result = command_executor
         .exec_command(reload_command)
         .await
-        .context("Failed to reload YSM models through RCON")?;
+        .context("Failed to reload YSM models")?;
     debug!("Reload result: {}", reload_result);
 
     tokio::time::sleep(state.config.reload_delay).await;
@@ -55,10 +56,10 @@ pub async fn upload_authorized_model(
         &profile_name,
         &stored_file_name
     );
-    let authorize_result = rcon
+    let authorize_result = command_executor
         .exec_command(&authorize_command)
         .await
-        .context("Failed to authorize YSM model through RCON")?;
+        .context("Failed to authorize YSM model")?;
 
     debug!("Authorize result: {}", authorize_result);
 
@@ -81,6 +82,115 @@ pub async fn upload_authorized_model(
         "reload_result": reload_result,
         "authorize_result": authorize_result,
     })))
+}
+
+enum CommandExecutor {
+    Rcon(RconSession),
+    MCSManager {
+        client: MCSManagerClient,
+        output_log_size_kb: u16,
+        command_wait: std::time::Duration,
+    },
+}
+
+impl CommandExecutor {
+    async fn connect(config: &Config) -> Result<Self> {
+        match config.ysm_command.backend {
+            YsmCommandBackend::Rcon => {
+                let session = RconSession::connect(
+                    (config.rcon.host.as_str(), config.rcon.port),
+                    &config.rcon.password,
+                )
+                .await
+                .context("Failed to connect to RCON")?;
+                Ok(Self::Rcon(session))
+            }
+            YsmCommandBackend::MCSManager => Ok(Self::MCSManager {
+                client: MCSManagerClient::new(&config.mcsmanager)
+                    .context("Failed to create MCSManager API client")?,
+                output_log_size_kb: config.ysm_command.mcsm_output_log_size_kb,
+                command_wait: config.ysm_command.mcsm_command_wait,
+            }),
+        }
+    }
+
+    async fn exec_command(&mut self, command: &str) -> Result<String> {
+        match self {
+            Self::Rcon(session) => session
+                .exec_command(command)
+                .await
+                .context("Failed to execute command through RCON"),
+            Self::MCSManager {
+                client,
+                output_log_size_kb,
+                command_wait,
+            } => {
+                let before_log = client
+                    .get_output_log(Some(*output_log_size_kb))
+                    .await
+                    .context("Failed to fetch MCSManager output log before command")?;
+                let instance_uuid = client
+                    .send_command(command)
+                    .await
+                    .context("Failed to execute command through MCSManager API")?;
+                tokio::time::sleep(*command_wait).await;
+                let after_log = client
+                    .get_output_log(Some(*output_log_size_kb))
+                    .await
+                    .context("Failed to fetch MCSManager output log after command")?;
+                Ok(format_mcsmanager_command_result(
+                    &instance_uuid,
+                    extract_new_output(&before_log, &after_log),
+                ))
+            }
+        }
+    }
+}
+
+fn extract_new_output(before_log: &str, after_log: &str) -> String {
+    if before_log.is_empty() {
+        return after_log.trim().to_string();
+    }
+
+    if let Some(stripped) = after_log.strip_prefix(before_log) {
+        return stripped.trim().to_string();
+    }
+
+    match longest_suffix_prefix_overlap(before_log, after_log) {
+        Some(overlap_len) if overlap_len < after_log.len() => after_log[overlap_len..].trim().to_string(),
+        Some(_) => String::new(),
+        None => after_log.trim().to_string(),
+    }
+}
+
+fn longest_suffix_prefix_overlap(before_log: &str, after_log: &str) -> Option<usize> {
+    let max_overlap = before_log.len().min(after_log.len());
+    (1..=max_overlap)
+        .rev()
+        .find(|&len| {
+            if !after_log.is_char_boundary(len) {
+                return false;
+            }
+
+            let start = before_log.len() - len;
+            if !before_log.is_char_boundary(start) {
+                return false;
+            }
+
+            before_log.as_bytes()[start..] == after_log.as_bytes()[..len]
+        })
+}
+
+fn format_mcsmanager_command_result(instance_uuid: &str, output: String) -> String {
+    if output.is_empty() {
+        return format!(
+            "Command accepted by MCSManager for instance {instance_uuid}, but no new output was captured"
+        );
+    }
+
+    format!(
+        "Command accepted by MCSManager for instance {instance_uuid}\n{output}"
+    )
 }
 
 struct ParsedUploadRequest {

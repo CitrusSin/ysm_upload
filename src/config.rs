@@ -17,6 +17,8 @@ pub struct Config {
     pub server: ServerConfig,
     pub oauth: OAuthProvidersConfig,
     pub rcon: RconConfig,
+    #[serde(default)]
+    pub ysm_command: YsmCommandConfig,
     #[serde(with = "humantime_serde")]
     pub reload_delay: Duration,
     #[serde(default)]
@@ -63,6 +65,25 @@ pub struct RconConfig {
     pub host: String,
     pub port: u16,
     pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct YsmCommandConfig {
+    #[serde(default)]
+    pub backend: YsmCommandBackend,
+    #[serde(default = "default_mcsm_output_log_size_kb")]
+    pub mcsm_output_log_size_kb: u16,
+    #[serde(default = "default_mcsm_command_wait", with = "humantime_serde")]
+    pub mcsm_command_wait: Duration,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum YsmCommandBackend {
+    #[default]
+    #[serde(rename = "Rcon", alias = "rcon")]
+    Rcon,
+    #[serde(rename = "MCSManager", alias = "mcsmanager")]
+    MCSManager,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -177,11 +198,7 @@ impl Default for MCSManagerConfig {
 }
 
 impl MCSManagerConfig {
-    pub fn validate(&self) -> Result<()> {
-        if !self.enabled {
-            anyhow::bail!("MCSManager upload is disabled")
-        }
-
+    pub fn validate_api_access(&self) -> Result<()> {
         for (field_name, value) in [
             ("mcsmanager.base_url", self.base_url.trim()),
             ("mcsmanager.api_key", self.api_key.trim()),
@@ -194,6 +211,14 @@ impl MCSManagerConfig {
         }
 
         Ok(())
+    }
+
+    pub fn validate_upload(&self) -> Result<()> {
+        if !self.enabled {
+            anyhow::bail!("MCSManager upload is disabled")
+        }
+
+        self.validate_api_access()
     }
 }
 
@@ -210,11 +235,19 @@ fn default_sftp_port() -> u16 {
     22
 }
 
+fn default_mcsm_output_log_size_kb() -> u16 {
+    64
+}
+
+fn default_mcsm_command_wait() -> Duration {
+    Duration::from_millis(800)
+}
+
 impl Config {
     fn check_integrity(&self) -> Result<()> {
         match &self.ysm_storage.backend {
             YsmStorageBackend::MCSManager => {
-                if let Err(e) = self.mcsmanager.validate() {
+                if let Err(e) = self.mcsmanager.validate_upload() {
                     return Err(e.context("YSM storage backend is set to MCSManager, but MCSManager configuration is invalid"));
                 }
             },
@@ -239,6 +272,18 @@ impl Config {
                     .context("YSM storage backend is set to Sftp, but SFTP storage configuration is invalid")?;
             }
         }
+
+        if self.ysm_command.backend == YsmCommandBackend::MCSManager {
+            self.mcsmanager
+                .validate_api_access()
+                .context("YSM command backend is set to MCSManager, but MCSManager configuration is invalid")?;
+
+            anyhow::ensure!(
+                (1..=2048).contains(&self.ysm_command.mcsm_output_log_size_kb),
+                "ysm_command.mcsm_output_log_size_kb must be between 1 and 2048"
+            );
+        }
+
         Ok(())
     }
 
@@ -293,6 +338,7 @@ impl Config {
                 port: 25575,
                 password: "your_rcon_password_here".to_string(),
             },
+            ysm_command: YsmCommandConfig::default(),
             ysm_storage: YsmStorageConfig::default(),
             mcsmanager: MCSManagerConfig::default(),
             reload_delay: Duration::from_secs(3),
