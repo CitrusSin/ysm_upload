@@ -8,12 +8,14 @@ use sha2::Sha256;
 use tracing::{info, warn, error};
 use crate::config::{self, Config, OAuthProviderConfig};
 use hmac::{Hmac, Mac};
+use reqwest::Url;
 
 
 pub struct AppState {
     pub config: Config,
-    
-    secret_key: Hmac<Sha256>
+
+    secret_key: Hmac<Sha256>,
+    frontend_base_path: String,
 }
 
 impl AppState {
@@ -49,13 +51,48 @@ impl AppState {
         let secret_key = Hmac::<Sha256>::new_from_slice(app_config.oauth.secret_string.as_bytes())
             .expect("HMAC can take key of any size");
 
-        AppState { config: app_config, secret_key }
+        let frontend_base_path = Url::parse(&app_config.server.prefix_url)
+            .ok()
+            .map(|url| normalize_base_path(url.path()))
+            .unwrap_or_else(|| "/".to_string());
+
+        AppState { config: app_config, secret_key, frontend_base_path }
     }
 
 
     /// Get the redirect URL
     pub fn get_redirect_uri(&self, provider: &str) -> String {
-        format!("{}/api/oauth/{}/callback", self.config.oauth.prefix_url, provider)
+        format!("{}/api/oauth/{}/callback", self.public_base_url(), provider)
+    }
+
+    pub fn public_base_url(&self) -> &str {
+        self.config.server.prefix_url.trim_end_matches('/')
+    }
+
+    pub fn frontend_base_path(&self) -> &str {
+        &self.frontend_base_path
+    }
+
+    pub fn frontend_base_href(&self) -> String {
+        if self.frontend_base_path == "/" {
+            "/".to_string()
+        } else {
+            format!("{}/", self.frontend_base_path)
+        }
+    }
+
+    pub fn app_path(&self, path: &str) -> String {
+        let normalized_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
+
+        if self.frontend_base_path == "/" {
+            normalized_path
+        } else {
+            format!("{}{}", self.frontend_base_path, normalized_path)
+        }
     }
 
     /// Get all enabled providers
@@ -75,6 +112,16 @@ impl AppState {
     pub fn secret(&self) -> &Hmac<Sha256> {
         &self.secret_key
     }
+}
+
+fn normalize_base_path(path: &str) -> String {
+    let trimmed = path.trim();
+
+    if trimmed.is_empty() || trimmed == "/" {
+        return "/".to_string();
+    }
+
+    format!("/{}", trimmed.trim_matches('/'))
 }
 
 

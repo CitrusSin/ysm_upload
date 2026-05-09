@@ -223,7 +223,7 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
                 "name": name,
                 "provider_type": provider_config.provider_type,
                 "display_name": provider_config.provider_type.display_name(),
-                "login_url": format!("/api/oauth/{}/login", name)
+                "login_url": state.app_path(&format!("/api/oauth/{}/login", name))
             })
         })
         .collect();
@@ -318,7 +318,7 @@ pub async fn callback(
     .sign_with_key(state.secret())?;
     
     let mut token_cookie = Cookie::new("access_token", token);
-    token_cookie.set_path("/");
+    token_cookie.set_path(state.frontend_base_path().to_string());
     token_cookie.set_http_only(true);
     token_cookie.set_same_site(SameSite::Strict);
     token_cookie.set_expires(time::OffsetDateTime::now_utc() + expire_duration);
@@ -326,7 +326,7 @@ pub async fn callback(
     let jar = jar.add(token_cookie);
     
     // Redirect to the home page
-    Ok((jar, Redirect::to("/")).into_response())
+    Ok((jar, Redirect::to(&state.app_path("/"))).into_response())
 }
 
 
@@ -339,15 +339,18 @@ pub async fn get_user(user: UnifiedUserInfo) -> Json<UnifiedUserInfo> {
 }
 
 /// Log out
-pub async fn logout(jar: CookieJar) -> impl IntoResponse {
+pub async fn logout(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> impl IntoResponse {
     info!("User logged out");
     
     let mut token_cookie = Cookie::from("access_token");
-    token_cookie.set_path("/");
+    token_cookie.set_path(state.frontend_base_path().to_string());
     
     let jar = jar.remove(token_cookie);
     
-    (jar, Redirect::to("/"))
+    (jar, Redirect::to(&state.app_path("/")))
 }
 
 /// Authentication middleware

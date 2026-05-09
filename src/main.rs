@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
         ));
     
     // Create routes
-    let app = Router::new()
+    let app_routes = Router::new()
         // OAuth2 provider list
         .route("/api/oauth/providers", get(oauth::list_providers))
         // Dynamic OAuth2 routes supporting multiple providers
@@ -81,7 +81,6 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/logout", get(oauth::logout))
         // Merge authenticated routes
         .merge(protected_routes)
-        .with_state(app_state.clone())
         // API request tracing
         .layer(TraceLayer::new_for_http()
             .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
@@ -90,6 +89,15 @@ async fn main() -> anyhow::Result<()> {
         )
         // Static file serving
         .fallback(static_content::serve_static);
+
+    let app = if app_state.frontend_base_path() == "/" {
+        app_routes
+    } else {
+        Router::new()
+            .route(app_state.frontend_base_path(), get(static_content::redirect_to_base))
+            .route(&app_state.frontend_base_href(), get(static_content::serve_static))
+            .nest(app_state.frontend_base_path(), app_routes)
+    }.with_state(app_state.clone());
     
     // If you need to protect other APIs with authentication, you can do it like this:
     // let protected_routes = Router::new()
@@ -116,7 +124,8 @@ async fn main() -> anyhow::Result<()> {
     ));
     
     info!("Server starting at: http://{}", addr);
-    info!("OAuth callback base URL: {}/api/oauth/[provider]/callback", app_state.config.oauth.prefix_url);
+    info!("OAuth callback base URL: {}/api/oauth/[provider]/callback", app_state.public_base_url());
+    info!("Frontend base path: {}", app_state.frontend_base_path());
     
     // Show all enabled providers
     let enabled_providers = app_state.get_enabled_providers();
@@ -128,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
             info!("  - {} ({}): {}/api/oauth/{}/login", 
                 name,
                 provider.provider_type.display_name(),
-                app_state.config.oauth.prefix_url,
+                app_state.public_base_url(),
                 name
             );
         }

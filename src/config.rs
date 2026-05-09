@@ -31,13 +31,12 @@ pub struct Config {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    pub prefix_url: String,
 }
 
 /// Collection of OAuth provider configurations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthProvidersConfig {
-    /// Prefix URL used to build callback addresses
-    pub prefix_url: String,
     /// Secret string used to sign tokens
     pub secret_string: String,
     /// Configuration for each provider
@@ -284,6 +283,14 @@ impl Config {
             );
         }
 
+        let prefix_url = reqwest::Url::parse(&self.server.prefix_url)
+            .context("server.prefix_url must be a valid absolute URL")?;
+
+        anyhow::ensure!(
+            matches!(prefix_url.scheme(), "http" | "https"),
+            "server.prefix_url must use the http or https scheme"
+        );
+
         Ok(())
     }
 
@@ -327,9 +334,9 @@ impl Config {
             server: ServerConfig {
                 host: "::".to_string(),
                 port: 3000,
+                prefix_url: "http://localhost:3000".to_string(),
             },
             oauth: OAuthProvidersConfig {
-                prefix_url: "http://localhost:3000".to_string(),
                 secret_string: bs58::encode(rng.random::<[u8;32]>()).into_string(),
                 providers,
             },
