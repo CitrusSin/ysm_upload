@@ -54,8 +54,8 @@ fn main() {
 
     println!("cargo:warning=Building frontend...");
 
-    // 安装依赖
-    let install_status = run_pnpm(frontend_dir, &["install"]);
+    // Install Dependencies
+    let install_status = run_pnpm(frontend_dir, &["install", "--ignore-scripts"]);
 
     match install_status {
         Ok(output) if output.status.success() => {

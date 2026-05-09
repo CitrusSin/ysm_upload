@@ -232,4 +232,4 @@ mcsmanager:
 3. `ysm_storage.backend` 选择了你实际可用的一种上传后端
 4. 如果使用 `MCSManager`，确认 `mcsmanager.enabled` 为 `true`
 5. 如果使用 `MCSManager`，确认 `mcsmanager.base_url`、`api_key`、`daemon_id`、`instance_id` 已正确填写
-6. 如果使用 `Sftp` 或 `RsyncOverSsh`，确认对应的 SSH 密码配置已填写
+6. 如果使用 `Sftp` 确认对应的 SSH 密码配置已填写
